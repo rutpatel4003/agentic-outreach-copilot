@@ -15,7 +15,7 @@ class OutreachStatus(enum.Enum):
     SENT = 'sent'
     REPLIED = 'replied'
     NO_RESPONSE = 'no_response'
-    FOLLOW_UP_SCHEDULED = 'follow_uo_scheduled'
+    FOLLOW_UP_SCHEDULED = 'follow_up_scheduled'
     BOUNCED = 'bounced'
     INTERESTED = 'interested'
     NOT_INTERESTED = 'not_interested'
@@ -25,7 +25,7 @@ class MessageChannel(enum.Enum):
     """
     Communication channel
     """
-    LINKED_CONNECTION = 'linkedin_connection'
+    LINKEDIN_CONNECTION = 'linkedin_connection'
     LINKEDIN_MESSAGE = 'linkedin_message'
     EMAIL = 'email'
     X = 'x'
@@ -46,11 +46,11 @@ class Company(Base):
     """
     Company information scraped from the website
     """
-    __tablename_ = 'companies'
+    __tablename__ = 'companies'
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     url = Column(String(512), nullable=False, unique=True)
-    domain = Column(String(255), nullabel=True, index=True)
+    domain = Column(String(255), nullable=True, index=True)
     mission = Column(Text, nullable=True)
     about_text = Column(Text, nullable=True)
     careers_text = Column(Text, nullable=True)
@@ -102,6 +102,7 @@ class OutreachMessage(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     company_id = Column(Integer, ForeignKey('companies.id'), nullable=False, index=True)
     contact_id = Column(Integer, ForeignKey('contacts.id'), nullable=True, index=True)  
+    campaign_id = Column(Integer, ForeignKey('campaigns.id'), nullable=True, index=True)
     target_role = Column(String(255), nullable=False)
     channel = Column(SQLEnum(MessageChannel), nullable=False, index=True)
     status = Column(SQLEnum(OutreachStatus), nullable=False, default=OutreachStatus.DRAFT, index=True)
@@ -112,6 +113,7 @@ class OutreachMessage(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     sent_at = Column(DateTime, nullable=True)
     replied_at = Column(DateTime, nullable=True)
+    response_time_hours = Column(Float, nullable=True)
     last_followed_up = Column(DateTime, nullable=True)
     next_followup_scheduled = Column(DateTime, nullable=True)
     reply_content = Column(Text, nullable=True)
@@ -122,7 +124,7 @@ class OutreachMessage(Base):
     citations = Column(Text, nullable=True)
     open_count = Column(Integer, default=0)
     click_count = Column(Integer, default=0)
-    notes = Column(Text, nulable=True)
+    notes = Column(Text, nullable=True)
     metadata = Column(Text, nullable=True)
     company = relationship("Company", back_populates='outreach_messages')
     contact = relationship('Contact', back_populates='outreach_messages')
@@ -135,16 +137,20 @@ class FollowUp(Base):
     """
     Follow-up messages for an original outreach
     """
+    __tablename__ = 'follow_ups'
     id = Column(Integer, primary_key=True, autoincrement=True)
     original_message_id = Column(Integer, ForeignKey('outreach_messages.id'), nullable=False, index=True)
     sequence_number = Column(Integer, nullable=False)
     message_content = Column(Text, nullable=False)
-    scheduled_at = Column(DateTime, nullable=False)
+    scheduled_date = Column(DateTime, nullable=False)
     sent_at = Column(DateTime, nullable=True)
     status = Column(SQLEnum(OutreachStatus), nullable=False, default=OutreachStatus.DRAFT)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    completed = Column(Boolean, default=False)
+    completed_date = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
-    original_memssage = relationship('OutreachMessage', back_populates='follow_ups')
+    followup_number = Column(Integer, nullable=False)
+    original_message = relationship('OutreachMessage', back_populates='follow_ups')
 
     def __repr__(self):
         return f"<FollowUp(id={self.id}, sequence={self.sequence_number}, status='{self.status.value}')>"
@@ -153,6 +159,7 @@ class Campaign(Base):
     """
     Outreach campaign grouping multiple messages
     """
+    __tablename__ = 'campaigns'
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
