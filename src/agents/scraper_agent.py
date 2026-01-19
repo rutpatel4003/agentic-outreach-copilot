@@ -168,7 +168,7 @@ class ScraperAgent:
             result = self.scraper.scrape_page(url)
             
             if result['success'] and result['text'] and len(result['text']) > 200:
-                print(f"found via subdomain: {url}")
+                print(f"Found via subdomain: {url}")
                 return result
         
         return None
@@ -176,11 +176,11 @@ class ScraperAgent:
     def _try_path_patterns(
         self,
         base_url: str,
-        page_type: str
+        page_type: str,
+        use_js_rendering: bool = False
     ) -> Optional[Dict]:
         """
         Try path patterns: /careers, /about, etc.
-        uses js rendering settings from scrape_company() call.
         """
         if page_type not in self.PATH_PATTERNS:
             return None
@@ -218,7 +218,7 @@ class ScraperAgent:
         page_type: str
     ) -> List[str]:
         """
-        Parse homepage html to find actual links to careers/about pages
+        Parse homepage HTML to find actual links to careers/about pages
         """
         keywords = {
             'careers': ['career', 'job', 'join', 'work with us', 'opportunities'],
@@ -252,31 +252,31 @@ class ScraperAgent:
     ) -> Optional[Dict]:
         """
         Multi-strategy scraping with fallbacks:
-        1. try subdomain patterns (careers.company.com)
-        2. try path patterns (/careers)
-        3. parse homepage for actual links
+        1. Try subdomain patterns (careers.company.com)
+        2. Try path patterns (/careers)
+        3. Parse homepage for actual links
         """
-        print(f"\n  searching for {page_type} page...")
+        print(f"\nSearching for {page_type} page...")
         
-        # strategy 1: subdomain patterns
-        print(f"    strategy 1: trying subdomains...")
+        # strategy 1: Subdomain patterns
+        print(f"Strategy 1: Trying subdomains...")
         result = self._try_subdomain_patterns(base_domain, page_type)
         if result:
             return result
         
-        # strategy 2: path patterns
-        print(f"    strategy 2: trying path patterns...")
+        # strategy 2: Path patterns
+        print(f"Strategy 2: Trying path patterns...")
         result = self._try_path_patterns(company_url, page_type)
         if result:
             return result
         
-        # strategy 3: parse homepage for actual links
+        # strategy 3: Parse homepage for actual links
         if homepage_html:
-            print(f"    strategy 3: parsing homepage for links...")
+            print(f"Strategy 3: Parsing homepage for links...")
             links = self._find_links_on_homepage(homepage_html, page_type)
             
             for link in links:
-                # make absolute url
+                # make absolute URL
                 if link.startswith('http'):
                     url = link
                 else:
@@ -328,23 +328,23 @@ class ScraperAgent:
         }
         
         print(f"\n{'='*60}")
-        print(f"scraping company: {result['company_name']}")
-        print(f"base domain: {base_domain}")
+        print(f"Scraping company: {result['company_name']}")
+        print(f"Base domain: {base_domain}")
         
-        # check if all pages have manual urls
+        # CHECK IF ALL PAGES HAVE MANUAL URLS
         all_manual = manual_urls and all(
             page_type in manual_urls for page_type in pages_to_scrape
         )
         
         if all_manual:
-            print("all pages have manual URLs - skipping auto-discovery")
+            print("All pages have manual URLs - skipping auto-discovery")
         
         print(f"{'='*60}")
 
         # get homepage only if we need auto-discovery
         homepage_html = None
         if not all_manual:
-            print("\nfetching homepage for link discovery...")
+            print("\nFetching homepage for link discovery...")
             try:
                 homepage_result = self.scraper.scrape_page(company_url)
                 homepage_html = homepage_result.get('html', '') if homepage_result['success'] else None
@@ -385,7 +385,7 @@ class ScraperAgent:
                         'url': scrape_result['url'],
                         'title': scrape_result['title'],
                         'text': scrape_result['text'],
-                        'html': scrape_result.get('html', ''),  # keep html for job extraction
+                        'html': scrape_result.get('html', ''),  # keep HTML for job extraction
                         'text_length': len(scrape_result['text']),
                         'scraped_at': scrape_result['scraped_at']
                     }
@@ -419,7 +419,7 @@ class ScraperAgent:
                         result['failed_pages'].append(page_type)
                 else:
                     result['failed_pages'].append(page_type)
-                    print(f"  skipping {page_type} - no manual URL and no homepage")
+                    print(f"Skipping {page_type} - no manual URL and no homepage")
 
         result['metadata'] = {
             'total_pages_attempted': len(pages_to_scrape),
@@ -431,7 +431,7 @@ class ScraperAgent:
         }
 
         # extract contacts from scraped pages
-        print("\nextracting contacts from scraped pages...")
+        print("\nExtracting contacts from scraped pages...")
         contacts = self.extract_contacts_from_company_data(result)
         result['extracted_contacts'] = [
             {
@@ -464,7 +464,7 @@ class ScraperAgent:
             careers_html = careers_page.get('html', '')
             careers_text = careers_page.get('text', '')
 
-            print(f"  careers page: {len(careers_text)} chars text, {len(careers_html)} chars html")
+            print(f"  ├─ Careers page: {len(careers_text)} chars text, {len(careers_html)} chars HTML")
 
             jobs = self.extract_job_listings(
                 text=careers_text,
@@ -475,25 +475,25 @@ class ScraperAgent:
         result['extracted_jobs'] = jobs
 
         if jobs:
-            print(f"  found {len(jobs)} job titles mentioned:")
+            print(f"  ✓ Found {len(jobs)} job titles mentioned:")
             for job in jobs[:5]:
-                print(f"    {job['title']}")
+                print(f"    • {job['title']}")
             if len(jobs) > 5:
-                print(f"    ... and {len(jobs) - 5} more")
+                print(f"... and {len(jobs) - 5} more")
         else:
-            print("no job listings extracted from text")
+            print("No job listings extracted from text")
             if 'careers' in result['pages']:
-                print("tip: the careers page was scraped with js rendering enabled")
-                print("if jobs are still missing, the site may use complex js frameworks")
+                print("Tip: The careers page was scraped with JS rendering enabled")
+                print("If jobs are still missing, the site may use complex JS frameworks")
 
         print(f"\n{'='*60}")
-        print(f"scraping complete: {result['success_count']}/{len(pages_to_scrape)} pages")
+        print(f"Scraping complete: {result['success_count']}/{len(pages_to_scrape)} pages")
         print(f"{'='*60}\n")
 
         return result
     
     def _extract_company_name(self, url: str) -> str:
-        """Extract company name from url"""
+        """Extract company name from URL"""
         domain = self._get_base_domain(url)
         return domain.split(".")[0].capitalize()
     
@@ -527,22 +527,21 @@ class ScraperAgent:
         target_role: Optional[str] = None
     ) -> List[Dict]:
         """
-        Extract job listings from careers page text/html.
-
-        returns list of jobs with: title, url (if found), location, match_score
+        Extract job listings from careers page text/HTML.
+        Returns list of jobs with: title, url (if found), location, match_score
         """
         jobs = []
         seen_titles = set()
 
         # common job title patterns
         job_patterns = [
-            # "software engineer" or "senior software engineer"
+            # "Software Engineer" or "Senior Software Engineer"
             r'((?:Senior|Junior|Lead|Staff|Principal|Sr\.?|Jr\.?)?\s*(?:Software|Backend|Frontend|Full[- ]?Stack|DevOps|ML|AI|Data|Cloud|Platform|Infrastructure|Mobile|iOS|Android|Web|QA|Test|Security|SRE|Site Reliability)\s*(?:Engineer|Developer|Architect|Manager|Lead|Scientist|Analyst))',
-            # "engineering manager" or "director of engineering"
+            # "Engineering Manager" or "Director of Engineering"
             r'((?:Engineering|Technical|Software|Product)\s*(?:Manager|Director|Lead|Head))',
-            # "product manager" or "technical program manager"
+            # "Product Manager" or "Technical Program Manager"
             r'((?:Senior|Lead|Principal|Sr\.?)?\s*(?:Product|Program|Project|Technical Program)\s*Manager)',
-            # generic role patterns
+            # Generic role patterns
             r'((?:Senior|Junior|Lead|Staff|Principal)?\s*(?:Recruiter|Designer|Researcher|Coordinator))',
         ]
 
@@ -570,10 +569,10 @@ class ScraperAgent:
                 jobs.append({
                     'title': title,
                     'match_score': match_score,
-                    'url': None  # would need html parsing for job urls
+                    'url': None  # would need HTML parsing for job URLs
                 })
 
-        # extract job urls and additional jobs from html if available
+        # extract job URLs and additional jobs from HTML if available
         if html:
             # common patterns for job listing links
             job_url_patterns = [
@@ -589,10 +588,10 @@ class ScraperAgent:
                         continue
                     found_urls.add(url)
 
-                    # try to extract job title from url
+                    # try to extract job title from URL
                     url_parts = url.lower().replace('-', ' ').replace('_', ' ').replace('/', ' ')
 
-                    # match url to existing job
+                    # match URL to existing job
                     matched = False
                     for job in jobs:
                         job_words = job['title'].lower().split()[:2]
@@ -602,11 +601,11 @@ class ScraperAgent:
                             matched = True
                             break
 
-                    # if url contains job keywords but didn't match, try to extract title
+                    # if URL contains job keywords but didn't match, try to extract title
                     if not matched:
                         for keyword in ['engineer', 'developer', 'manager', 'designer', 'analyst', 'scientist']:
                             if keyword in url_parts:
-                                # extract potential title from url path
+                                # extract potential title from URL path
                                 path_parts = url.split('/')[-1].replace('-', ' ').replace('_', ' ')
                                 if len(path_parts) > 5 and path_parts.lower() not in seen_titles:
                                     potential_title = path_parts.title()
@@ -619,7 +618,7 @@ class ScraperAgent:
                                         seen_titles.add(path_parts.lower())
                                 break
 
-            # also look for job titles in common html structures
+            # also look for job titles in common HTML structures
             job_title_html_patterns = [
                 r'<h[1-4][^>]*class=["\'][^"\']*(?:job|position|role|title)[^"\']*["\'][^>]*>([^<]+)</h[1-4]>',
                 r'<a[^>]*class=["\'][^"\']*(?:job|position|opening)[^"\']*["\'][^>]*>([^<]+)</a>',
@@ -633,7 +632,7 @@ class ScraperAgent:
                     title = title.strip()
                     title_lower = title.lower()
                     if len(title) > 5 and len(title) < 80 and title_lower not in seen_titles:
-                        # check if it looks like a job title
+                        # Check if it looks like a job title
                         job_keywords = ['engineer', 'developer', 'manager', 'designer', 'lead', 'analyst', 'scientist', 'architect', 'director']
                         if any(kw in title_lower for kw in job_keywords):
                             jobs.append({
@@ -655,24 +654,24 @@ class ScraperAgent:
         source_page: str = "team"
     ) -> List[ExtractedContact]:
         """
-        Extract potential contacts from page text and html.
+        Extract potential contacts from page text and HTML.
 
-        uses multiple strategies:
-        1. name + title patterns (e.g., "john smith, ceo")
-        2. linkedin profile urls
-        3. email patterns
-        4. structured data patterns
+        Uses multiple strategies:
+        1. Name + Title patterns (e.g., "John Smith, CEO")
+        2. LinkedIn profile URLs
+        3. Email patterns
+        4. Structured data patterns
         """
         contacts = []
         seen_names = set()
 
-        # strategy 1: extract linkedin urls from html
+        # strategy 1: extract linkedin URLs from HTML
         if html:
             linkedin_pattern = r'href=["\']?(https?://(?:www\.)?linkedin\.com/in/[a-zA-Z0-9_-]+)["\']?'
             linkedin_urls = re.findall(linkedin_pattern, html, re.IGNORECASE)
 
             for url in linkedin_urls[:10]:  # limit to first 10
-                # try to extract name from url
+                # try to extract name from URL
                 name_part = url.split('/in/')[-1].rstrip('/')
                 name_clean = name_part.replace('-', ' ').replace('_', ' ').title()
 
@@ -686,11 +685,10 @@ class ScraperAgent:
                     seen_names.add(name_clean)
 
         # strategy 2: extract name + title patterns from text
-        # pattern: "name name, title" or "name name - title" or "title: name name"
         name_title_patterns = [
-            # "john smith, ceo" or "john smith - engineering manager"
+            # "John Smith, CEO" or "John Smith - Engineering Manager"
             r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*[,\-–—]\s*([A-Za-z\s&]+(?:Manager|Director|Lead|Engineer|Recruiter|VP|CEO|CTO|CFO|COO|Officer|Head|President|Founder))',
-            # "ceo: john smith" or "engineering manager - jane doe"
+            # "CEO: John Smith" or "Engineering Manager - Jane Doe"
             r'([A-Za-z\s]+(?:Manager|Director|Lead|Recruiter|VP|CEO|CTO|Head|Officer))\s*[:\-–—]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})',
         ]
 
@@ -790,8 +788,8 @@ class ScraperAgent:
         """
         Extract contacts from scraped company data.
 
-        prioritizes team/leadership page but also checks other pages.
-        if target_role is provided, boosts relevance of matching titles.
+        Prioritizes team/leadership page but also checks other pages.
+        If target_role is provided, boosts relevance of matching titles.
         """
         all_contacts = []
 

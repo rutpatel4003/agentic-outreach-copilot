@@ -33,7 +33,7 @@ class OutreachState(TypedDict):
     target_role: str
     company_url: str
     company_name: Optional[str]
-    scraped_data: Optional[Dict]
+    scraped_data: Optional[Dict]  # now includes 'extracted_contacts' list
     message_variants: Optional[List[Dict]]
     selected_variant: Optional[Dict]
     guardrail_result: Optional[Dict]
@@ -57,7 +57,7 @@ class OutreachWorkflow:
         guardrails: Optional[Guardrails] = None,
         tracking_agent: Optional[TrackingAgent] = None,
         resume_parser: Optional[ResumeParser] = None,
-        model_name: str = 'llama3.1:8b'
+        model_name: str = 'qwen3:4b-instruct'
     ):
         self.scraper = scraper_agent or ScraperAgent()
         self.personalizer = personalization_agent or PersonalizationAgent(model_name=model_name)
@@ -158,10 +158,60 @@ class OutreachWorkflow:
             pages = (result or {}).get('pages', {})
             state['metadata']['pages_scraped'] = len(pages) if isinstance(pages, dict) else 0
 
+            # re-extract contacts with target_role for better relevance scoring
+            contacts = result.get('extracted_contacts', [])
+            if contacts:
+                # boost relevance for contacts matching target role
+                target_role = state.get('target_role', '').lower()
+                for contact in contacts:
+                    if contact.get('title'):
+                        title_lower = contact['title'].lower()
+                        # check for role keyword matches
+                        if any(kw in title_lower for kw in target_role.split()):
+                            contact['relevance_score'] = min(1.0, contact.get('relevance_score', 0) + 0.2)
+
+                # re-sort by relevance
+                contacts.sort(key=lambda c: c.get('relevance_score', 0), reverse=True)
+                result['extracted_contacts'] = contacts
+
+            state['metadata']['contacts_found'] = len(contacts)
+
+            # filter and score job listings by target role
+            jobs = result.get('extracted_jobs', [])
+            if jobs and state.get('target_role'):
+                target_role = state['target_role'].lower()
+                target_words = set(target_role.split())
+
+                for job in jobs:
+                    title_lower = job['title'].lower()
+                    title_words = set(title_lower.split())
+                    overlap = target_words & title_words
+
+                    if overlap:
+                        job['match_score'] = len(overlap) / len(target_words)
+                    else:
+                        # Check for partial matches
+                        job['match_score'] = 0.0
+                        for tw in target_words:
+                            if tw in title_lower:
+                                job['match_score'] += 0.3
+
+                # sort by match score
+                jobs.sort(key=lambda j: j.get('match_score', 0), reverse=True)
+                result['extracted_jobs'] = jobs
+
+                # log matching jobs
+                matching_jobs = [j for j in jobs if j.get('match_score', 0) > 0.3]
+                if matching_jobs:
+                    logger.info(f"Found {len(matching_jobs)} jobs matching '{state['target_role']}'")
+
+            state['metadata']['jobs_found'] = len(jobs)
+
             
             logger.info(
                 f"Scraping complete: {state['company_name']}, "
-                f"{state['metadata']['pages_scraped']} pages"
+                f"{state['metadata']['pages_scraped']} pages, "
+                f"{len(contacts)} contacts, {len(jobs)} jobs found"
             )
             
         except Exception as e:
@@ -188,6 +238,9 @@ class OutreachWorkflow:
                 v = pages.get(key, {})
                 return v.get('text', '') if isinstance(v, dict) else (v or '')
 
+            # extract the convenience fields that scraper already prepared
+            scraped_data = state.get('scraped_data', {})
+
             result = self.personalizer.generate_outreach_messages(
                 resume_data=state['resume_data'],
                 target_role=state['target_role'],
@@ -197,6 +250,12 @@ class OutreachWorkflow:
                     'news': _page_text('news'),
                     'careers': _page_text('careers'),
                     'team': _page_text('team'),
+                    'mission': scraped_data.get('mission', ''),
+                    'recent_news': scraped_data.get('recent_news', ''),
+                    'careers_text': scraped_data.get('careers_text', ''),
+                    'team_text': scraped_data.get('team_text', ''),
+                    'hiring_roles': [],  # can be populated if scraper extracts job listings - in progress currently
+                    'key_people': [],  # can be populated if scraper extracts team members - in progress currently
                 },
                 message_type=message_type,
                 tone=tone,
@@ -451,7 +510,7 @@ def run_outreach_workflow(
     contact_name: Optional[str] = None,
     contact_email: Optional[str] = None,
     skip_guardrails: bool = False,
-    model_name: str = "llama3.1:8b"
+    model_name: str = "qwen3:4b-instruct"
 ) -> Dict:
     workflow = OutreachWorkflow(model_name=model_name)
     result = workflow.run(

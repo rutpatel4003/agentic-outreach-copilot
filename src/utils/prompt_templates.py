@@ -7,7 +7,7 @@ class MessageTone(Enum):
     ENTHUSIASTIC = 'enthusiastic'
 
 class MessageType(Enum):
-    LINKED_CONNECTION = 'linkedin_connection'
+    LINKEDIN_CONNECTION = 'linkedin_connection'
     LINKEDIN_MESSAGE = 'linkedin_message'
     EMAIL = 'email'
 
@@ -49,6 +49,13 @@ REQUIREMENTS:
 5. Connect 2-3 candidate skills to company needs
 6. End with clear CTA: {cta_type}
 
+CITATIONS (mandatory):
+- Include at least 2 inline citations in the message body.
+- Citations MUST be exactly one of: [source: about], [source: careers], [source: news], [source: team]
+- Do NOT cite raw URLs. Do NOT invent sources.
+PERSPECTIVE:
+- You are the candidate reaching out. Never say “our company/team” or imply you work there.
+
 Generate {num_variants} variants (slightly different angles/openings).
 
 OUTPUT FORMAT (JSON):
@@ -66,14 +73,19 @@ OUTPUT FORMAT (JSON):
 
     GUARDRAILS_CHECK_SYSTEM = """You are a fact-checking assistant. Your job is to verify claims in outreach messages against source material.
 
-For each claim in the message:
-1. Identify if it's a factual claim about the company
-2. Verify if it appears in the source material
-3. Flag any claims that cannot be verified
+CRITICAL RULES:
+1. IGNORE subjective/relationship statements about the recipient (e.g., "impressed by your profile", "love your background", "excited about", "passionate about") - these are NOT fact claims requiring verification
+2. IGNORE statements about the candidate's own skills/experience - only verify company facts
+3. ONLY verify factual claims about the company (mission, products, news, people, achievements)
 
-Be strict but reasonable - paraphrases are acceptable if they preserve accuracy."""
+For each FACTUAL claim about the company:
+1. Verify if it appears in the source material
+2. Paraphrases are acceptable if they preserve accuracy
+3. Only flag claims that are clearly false or completely absent from source material
 
-    GUARDRAILS_CHECK_TEMPLATE = """Verify all factual claims in this outreach message.
+Be reasonable - if a claim is a close paraphrase of source content, mark it as verified."""
+
+    GUARDRAILS_CHECK_TEMPLATE = """Verify ONLY factual claims about the company in this outreach message.
 
 MESSAGE:
 {message}
@@ -81,10 +93,21 @@ MESSAGE:
 SOURCE MATERIAL:
 {source_material}
 
-Check each factual claim about the company. For each claim:
-1. Is it factually stated? (vs opinion/generic statement)
-2. Can it be verified in source material?
-3. If unverified, what is the specific claim?
+WHAT TO CHECK:
+- Company mission statements, values, or goals
+- Company products, services, or technologies
+- Recent news, announcements, or achievements
+- Information about company people (founders, team members)
+
+WHAT TO IGNORE (DO NOT FLAG):
+- Subjective statements about the recipient ("impressed by", "excited about", "love your")
+- Statements about the candidate's own skills/experience
+- Generic industry statements
+- Relationship-building phrases
+
+For each FACTUAL claim about the company:
+1. Can it be verified in source material (exact or paraphrase)?
+2. If unverified, what is the specific claim?
 
 OUTPUT FORMAT (JSON):
 {{
@@ -218,7 +241,7 @@ OUTPUT FORMAT (JSON):
         num_variants: int = 3
     ) -> str:
         word_limits = {
-            MessageType.LINKED_CONNECTION: 100,
+            MessageType.LINKEDIN_CONNECTION: 100,
             MessageType.LINKEDIN_MESSAGE: 150,
             MessageType.EMAIL: 250
         }

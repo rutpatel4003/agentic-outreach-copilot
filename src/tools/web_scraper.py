@@ -6,10 +6,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, List
 from urllib.parse import urljoin, urlparse
-
+import asyncio
+import sys
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 from bs4 import BeautifulSoup
 import trafilatura
+
 
 class WebScraper:
     """
@@ -84,7 +88,15 @@ class WebScraper:
         except Exception as e:
             print(f'Cache writing error: {e}')
 
-    def scrape_page(self, url: str, use_cache: bool = True, wait_for_selector: Optional[str] = None) -> Optional[Dict[str, any]]:
+    def scrape_page(
+        self,
+        url: str,
+        use_cache: bool = True,
+        wait_for_selector: Optional[str] = None,
+        wait_for_js: bool = False,
+        scroll_page: bool = False,
+        extra_wait_ms: int = 0
+    ) -> Dict:
         """
         Scrape a single page and extract clean content
         """
@@ -92,7 +104,7 @@ class WebScraper:
             cached = self._load_from_cache(url)
             if cached:
                 return cached
-            
+
         self._rate_limit()
         result = {
             'url': url,
@@ -105,38 +117,95 @@ class WebScraper:
         }
 
         try:
+            print(f'Fetching: {url}')
+            js_mode = " (JS rendering)" if wait_for_js else ""
+            print(f'  ├─ Mode: Playwright{js_mode}')
+
             with sync_playwright() as p:
+                print(f'  ├─ Launching browser...')
                 browser = p.chromium.launch(headless=self.headless)
                 context = browser.new_context(
-                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
                 )
                 page = context.new_page()
 
-                print(f'Fetching: {url}')
-                response = page.goto(url, wait_until='domcontentloaded', timeout = self.timeout)
-                if response.status != 200:
-                    result['error'] = f"HTTP {response.status}"
-                    return result
-                
-                if wait_for_selector: # wait if specific content is required
-                    page.wait_for_selector(wait_for_selector, timeout=self.timeout)
+                # choose wait strategy based on JS rendering needs
+                wait_strategy = 'networkidle' if wait_for_js else 'domcontentloaded'
+                print(f'  ├─ Navigating (wait: {wait_strategy})...')
 
+                response = page.goto(url, wait_until=wait_strategy, timeout=self.timeout)
+
+                if response is None:
+                    result['error'] = "No response from server"
+                    print(f'  └─ ❌ No response')
+                    browser.close()
+                    return result
+
+                # accept various success codes
+                if response.status >= 400:
+                    result['error'] = f"HTTP {response.status}"
+                    print(f'  └─ ❌ HTTP {response.status}')
+                    browser.close()
+                    return result
+
+                print(f'  ├─ Response: HTTP {response.status}')
+
+                # wait for specific selector if provided
+                if wait_for_selector:
+                    print(f'  ├─ Waiting for selector: {wait_for_selector}')
+                    try:
+                        page.wait_for_selector(wait_for_selector, timeout=self.timeout)
+                    except PlaywrightTimeout:
+                        print(f'  ├─ ⚠️ Selector not found, continuing anyway')
                 else:
-                    page.wait_for_selector('body', timeout = self.timeout)
-                
+                    print(f'  ├─ Waiting for body...')
+                    page.wait_for_selector('body', timeout=self.timeout)
+
+                # scroll page to trigger lazy loading (useful for job listings)
+                if scroll_page:
+                    print(f'  ├─ Scrolling page to load dynamic content...')
+                    page.evaluate('''
+                        async () => {
+                            await new Promise((resolve) => {
+                                let totalHeight = 0;
+                                const distance = 300;
+                                const timer = setInterval(() => {
+                                    window.scrollBy(0, distance);
+                                    totalHeight += distance;
+                                    if (totalHeight >= document.body.scrollHeight) {
+                                        clearInterval(timer);
+                                        resolve();
+                                    }
+                                }, 100);
+                                // Safety timeout
+                                setTimeout(() => { clearInterval(timer); resolve(); }, 5000);
+                            });
+                        }
+                    ''')
+                    # wait a bit after scrolling for content to load
+                    page.wait_for_timeout(1000)
+
+                # extra wait for JS rendering
+                if extra_wait_ms > 0:
+                    print(f'  ├─ Extra wait: {extra_wait_ms}ms')
+                    page.wait_for_timeout(extra_wait_ms)
+
                 # get content
+                print(f'  ├─ Extracting content...')
                 html = page.content()
                 title = page.title()
                 browser.close()
+                print(f'  ├─ Browser closed')
 
                 # extract clean text 
-                clean_text  = trafilatura.extract(
+                print(f'  ├─ Parsing with Trafilatura...')
+                clean_text = trafilatura.extract(
                     html, include_comments=False, include_tables=True, no_fallback=False
                 )
 
                 if not clean_text:
+                    print(f'  ├─ Trafilatura failed, using BeautifulSoup...')
                     soup = BeautifulSoup(html, 'html.parser')
-                    # remove script and style elements
                     for script in soup(['script', 'style', 'nav', 'footer', 'header']):
                         script.decompose()
                     clean_text = soup.get_text(separator='\n', strip=True)
@@ -146,20 +215,22 @@ class WebScraper:
                 result['title'] = title
                 result['success'] = True
 
-                print(f'Successfully scraped: {url} ({len(clean_text)} chars)')
+                print(f'  └─ ✅ Success: {len(clean_text)} chars extracted')
 
                 if use_cache:
                     self._save_to_cache(url, result)
 
                 return result
             
-        except PlaywrightTimeout:
-            result['error'] = 'Timeout: Page took too long to load'
-            print(f'Timeout: {url}')
+        except PlaywrightTimeout as e:
+            result['error'] = f'Timeout: {str(e)}'
+            print(f'  └─ ❌ Timeout error: {e}')
 
         except Exception as e:
             result['error'] = str(e)
-            print(f'Error scraping {url}: {e}')
+            print(f'  └─ ❌ Error: {e}')
+            import traceback
+            print(traceback.format_exc())
 
         return result
     
