@@ -1,10 +1,10 @@
 import logging
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 
-from src.tools.llm_interface import OllamaInterface
+from src.tools.llm_interface import OllamaInterface, LLMConfig
 from src.utils.prompt_templates import PromptTemplates
 
 logging.basicConfig(level=logging.INFO)
@@ -50,8 +50,8 @@ class ReplyAnalysis:
 
 class ReplyAgent:
     def __init__(self, llm_interface: Optional[OllamaInterface] = None,
-                 model_name: str = "llama:3.1:8b", temperature: float = 0.7, max_retries: int=3):
-        self.llm = llm_interface or OllamaInterface(model=model_name)
+                 model_name: str = "qwen3:4b-instruct", temperature: float = 0.7, max_retries: int=3):
+        self.llm = llm_interface or OllamaInterface(config=LLMConfig(model=model_name))        
         self.temperature = temperature
         self.max_retries = max_retries
         self.prompt_templates = PromptTemplates()
@@ -70,7 +70,7 @@ class ReplyAgent:
                     prompt = prompt,
                     system_prompt = system_prompt,
                     temperature = 0.3,
-                    max_tokens = 1000
+                    max_tokens = 900
                 )
 
                 parsed = self._parse_json_response(response)
@@ -88,7 +88,7 @@ class ReplyAgent:
                 try:
                     sentiment = ReplySentiment[sentiment_str.upper()]
                 except KeyError:
-                    snetiment = ReplySentiment.NEUTRAL
+                    sentiment = ReplySentiment.NEUTRAL
 
                 action_str = parsed.get('action_needed', 'close')
                 try:
@@ -112,7 +112,7 @@ class ReplyAgent:
         return self._create_fallback_classification(reply_text)
     
     def suggest_responses(
-            self, original_message: str, reply_text: str, classification: ReplyClassification, candidate_info: Dict[str, any], num_variants: int = 2
+            self, original_message: str, reply_text: str, classification: ReplyClassification, candidate_info: Dict[str, Any], num_variants: int = 2
     ) -> List[ResponseSuggestion]:
         if classification.action_needed == ActionNeeded.CLOSE:
             logger.info('No response needed for this reply')
@@ -146,7 +146,7 @@ class ReplyAgent:
                     prompt=prompt,
                     system_prompt=system_prompt,
                     temperature=self.temperature,
-                    max_tokens=1500
+                    max_tokens=900
                 )
 
                 parsed = self._parse_json_response(response)
@@ -183,7 +183,7 @@ class ReplyAgent:
         return []
     
     def analyze_reply(
-            self, original_message: str, reply_text: str, candidate_info: Dict[str, any],
+            self, original_message: str, reply_text: str, candidate_info: Dict[str, Any],
             generate_suggestions: bool=True, num_suggestions: int = 2
     ) -> ReplyAnalysis:
         classification = self.classify_reply(original_message=original_message, reply_text=reply_text)
@@ -201,7 +201,7 @@ class ReplyAgent:
             classification=classification,
             suggestions=suggestions,
             analysis_metadata={
-                'model': self.llm.model,
+                'model': self.llm.config.model,
                 'temperature': self.temperature,
                 'original_message_length': len(original_message),
                 'reply_length': len(reply_text)
@@ -292,24 +292,25 @@ class ReplyAgent:
                     return None
             
             return None
-        
-    def analyze_reply_and_suggest(original_message: str,
-                                  reply_text: str,
-                                  candidate_name: str = 'Candidate',
-                                  candidate_email: Optional[str] = None,
-                                  candidate_skills: Optional[List[str]] = None,
-                                  model_name: str = 'llama3.1:8b') -> ReplyAnalysis:
-        candidate_info = {
-            'name': candidate_name,
-            'email': candidate_email,
-            'skills': candidate_skills
-        }
 
-        agent = ReplyAgent(model_name = model_name)
-        return agent.analyze_reply(
-            original_message=original_message,
-            reply_text=reply_text,
-            candidate_info=candidate_info,
-            generate_suggestions=True,
-            num_suggestions=2
-        )
+        
+def analyze_reply_and_suggest(original_message: str,
+                              reply_text: str,
+                              candidate_name: str = 'Candidate',
+                              candidate_email: Optional[str] = None,
+                              candidate_skills: Optional[List[str]] = None,
+                              model_name: str = 'qwen3:4b-instruct') -> ReplyAnalysis:
+    candidate_info = {
+        'name': candidate_name,
+        'email': candidate_email,
+        'skills': candidate_skills
+    }
+
+    agent = ReplyAgent(model_name = model_name)
+    return agent.analyze_reply(
+        original_message=original_message,
+        reply_text=reply_text,
+        candidate_info=candidate_info,
+        generate_suggestions=True,
+        num_suggestions=2
+    )
