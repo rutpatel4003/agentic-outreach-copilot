@@ -117,7 +117,7 @@ class PersonalizationAgent:
                     logger.warning(f"Invalid response structure on attempt {attempt + 1}")
                     continue
 
-                # Filter variants to ensure they have at least 2 inline citations
+                # filter variants to ensure they have at least 2 inline citations
                 valid_variants = []
                 for variant_data in parsed_response['variants']:
                     if not isinstance(variant_data, dict):

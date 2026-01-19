@@ -1,0 +1,52 @@
+# ---- Python bytecode ----
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ---- Virtual environments ----
+venv/
+.venv/
+env/
+ENV/
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ---- Logs / temp ----
+*.log
+
+# ---- Test / coverage ----
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# ---- Packaging / build ----
+build/
+dist/
+*.egg-info/
+
+# ---- Streamlit ----
+.streamlit/secrets.toml
+
+# ---- Playwright ----
+# (optional) if you store recordings/traces/videos in repo
+playwright-report/
+test-results/
+trace.zip
+
+# ---- Local data/cache (your project) ----
+data/scraped_content/
+data/cache/
+outreach.db
+*.sqlite
+*.sqlite3
+
+# ---- Env files ----
+.env
+.env.*
+!.env.example

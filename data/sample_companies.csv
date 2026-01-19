@@ -1,0 +1,31 @@
+company_name,company_url,target_role,industry,size
+Anthropic,https://www.anthropic.com,Machine Learning Engineer,AI Research,201-500
+OpenAI,https://openai.com,Research Scientist,AI Research,201-500
+Google DeepMind,https://www.deepmind.com,Software Engineer,AI Research,1001-5000
+Meta AI,https://ai.meta.com,Research Engineer,Social Media,10000+
+Microsoft Research,https://www.microsoft.com/en-us/research,Principal Researcher,Technology,10000+
+NVIDIA,https://www.nvidia.com/en-us/research,Deep Learning Engineer,Hardware/AI,10000+
+Hugging Face,https://huggingface.co,Machine Learning Engineer,AI Platform,51-200
+Scale AI,https://scale.com,Software Engineer,AI Data,501-1000
+Cohere,https://cohere.com,Applied Scientist,AI Research,51-200
+Stability AI,https://stability.ai,Research Engineer,Generative AI,51-200
+Cruise,https://getcruise.com,Autonomy Engineer,Autonomous Vehicles,1001-5000
+Waymo,https://waymo.com,Software Engineer,Autonomous Vehicles,1001-5000
+Tesla AI,https://www.tesla.com/AI,Computer Vision Engineer,Automotive,10000+
+Nuro,https://nuro.ai,Robotics Engineer,Autonomous Delivery,201-500
+Aurora,https://aurora.tech,Perception Engineer,Autonomous Vehicles,501-1000
+Stripe,https://stripe.com,Software Engineer,Fintech,5001-10000
+Plaid,https://plaid.com,Backend Engineer,Fintech,501-1000
+Robinhood,https://robinhood.com,Software Engineer,Fintech,1001-5000
+Coinbase,https://www.coinbase.com,Blockchain Engineer,Cryptocurrency,1001-5000
+Airbnb,https://www.airbnb.com,Software Engineer,Travel Technology,5001-10000
+Spotify,https://www.spotify.com,Backend Engineer,Music Streaming,5001-10000
+Netflix,https://www.netflix.com,Software Engineer,Entertainment,10000+
+Discord,https://discord.com,Senior Engineer,Communication,501-1000
+Zoom,https://zoom.us,Software Engineer,Video Communications,5001-10000
+Slack,https://slack.com,Software Engineer,Workplace Tools,1001-5000
+Notion,https://www.notion.so,Full Stack Engineer,Productivity,201-500
+Figma,https://www.figma.com,Software Engineer,Design Tools,501-1000
+Canva,https://www.canva.com,Software Engineer,Design Platform,1001-5000
+Databricks,https://databricks.com,Software Engineer,Data Analytics,5001-10000
+Snowflake,https://www.snowflake.com,Software Engineer,Data Warehousing,5001-10000

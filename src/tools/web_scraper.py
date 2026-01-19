@@ -38,7 +38,7 @@ class WebScraper:
 
     def _get_cache_path(self, url: str) -> Path:
         """
-        Generate cache file path from URL
+        Generate cache file path from url
         """
         url_hash = hashlib.md5(url.encode()).hexdigest()
         domain = urlparse(url).netloc.replace('.', '_')
@@ -165,7 +165,7 @@ class WebScraper:
     
     def scrape_multiple(self, urls: List[str], use_cache: bool = True) -> Dict[str, Dict]:
         """
-        Scrape multiple URLs with rate limiting
+        Scrape multiple urls with rate limiting
         """
         results = {}
         for i, url in enumerate(urls, 1):
@@ -177,7 +177,7 @@ class WebScraper:
     
     def extract_links(self, html: str, base_url: str) -> List[str]:
         """
-        Extract all links from HTML
+        Extract all links from html
         """
         soup = BeautifulSoup(html, 'html.parser')
         links = []

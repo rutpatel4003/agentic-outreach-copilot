@@ -75,7 +75,7 @@ class OutreachWorkflow:
         workflow.add_node('generate_messages', self._generate_messages_node)
         workflow.add_node('check_guardrails', self._check_guardrails_node)
         workflow.add_node('track_outreach', self._track_outreach_node)
-        workflow.add_node('hadle_failure', self._handle_failure_node)
+        workflow.add_node('handle_failure', self._handle_failure_node)
 
         workflow.set_entry_point('parse_resume')
         workflow.add_edge('parse_resume', 'scrape_company')
@@ -103,14 +103,14 @@ class OutreachWorkflow:
         return workflow
     
     def _parse_resume_node(self, state: OutreachState) -> OutreachState:
-        logger.info(f'Parsing resume: {state['resume_path']}')
+        logger.info(f"Parsing resume: {state['resume_path']}")
         try:
             resume_data = self.resume_parser.parse(state['resume_path'])
             state['resume_data'] = resume_data
-            state['status'] = WorkflowStatus.INITALIZED.value
+            state['status'] = WorkflowStatus.INITIALIZED.value
             state['metadata']['resume_parsed'] = True
             state['metadata']['skills_count'] = len(resume_data.skills)
-            logger.info(f'Resume parsed: {resume_data.name or 'Unknown'}, '
+            logger.info(f"Resume parsed: {resume_data.name or 'Unknown'}, "
                         f"{len(resume_data.skills)} skills")
         except Exception as e:
             logger.error(f'Resume parsing failed: {e}')
@@ -127,19 +127,43 @@ class OutreachWorkflow:
         state['status'] = WorkflowStatus.SCRAPING.value
         
         try:
-            result = self.scraper.scrape_company(state['company_url'])
+            # GET MANUAL URLS FROM STATE
+            manual_urls = state.get('manual_urls', None)
+            
+            result = self.scraper.scrape_company(
+                state['company_url'],
+                manual_urls=manual_urls  # PASS TO SCRAPER
+            )
+            
             state['scraped_data'] = result
+            pages = (result or {}).get("pages", {}) or {}
+
+            def _page_text(key: str) -> str:
+                v = pages.get(key) or {}
+                return (v.get("text") or "").strip()
+
+            # keep original pages + provide convenience fields used elsewhere
+            result["mission"] = _page_text("about")
+            result["recent_news"] = _page_text("news")
+            result["careers_text"] = _page_text("careers")
+            result["team_text"] = _page_text("team")
+
+            # keep a simple url map for citations
+            result["page_urls"] = {
+                k: (pages.get(k) or {}).get("url", "")
+                for k in ["about", "careers", "news", "team"]
+            }
             state['company_name'] = result.get('company_name', 'Unknown Company')
             state['metadata']['scraping_success'] = True
-            state['metadata']['pages_scraped'] = len([
-                v for v in result.values() if v
-            ])
+            pages = (result or {}).get('pages', {})
+            state['metadata']['pages_scraped'] = len(pages) if isinstance(pages, dict) else 0
 
+            
             logger.info(
                 f"Scraping complete: {state['company_name']}, "
                 f"{state['metadata']['pages_scraped']} pages"
             )
-
+            
         except Exception as e:
             logger.error(f"Company scraping failed: {e}")
             state['status'] = WorkflowStatus.FAILED.value
@@ -147,29 +171,38 @@ class OutreachWorkflow:
         
         return state
     
-    def _generate_message_node(self, state: OutreachState) -> OutreachState:
+    def _generate_messages_node(self, state: OutreachState) -> OutreachState:
         if state.get('status') == WorkflowStatus.FAILED.value:
             return state
         
         logger.info('Generating personalized messages')
         state['status'] = WorkflowStatus.PERSONALIZING.value
         try:
-            message_type = MessageType(state.get('message_type', 'LINKEDIN_MESSAGE'))
+            message_type = MessageType(state.get("message_type", MessageType.LINKEDIN_MESSAGE.value))
             tone = MessageTone[state.get('tone', 'PROFESSIONAL').upper()]
+
+            # extract scraped page content from the correct structure
+            pages = (state.get('scraped_data') or {}).get('pages', {})
+
+            def _page_text(key: str) -> str:
+                v = pages.get(key, {})
+                return v.get('text', '') if isinstance(v, dict) else (v or '')
+
             result = self.personalizer.generate_outreach_messages(
                 resume_data=state['resume_data'],
                 target_role=state['target_role'],
                 company_data={
                     'company_name': state['company_name'],
-                    'mission': state['scraped_data'].get('mission', ''),
-                    'recent_news': state['scraped_data'].get('recent_news', ''),
-                    'hiring_roles': state['scraped_data'].get('hiring_roles', []),
-                    'key_people': state['scraped_data'].get('key_people', [])
+                    'about': _page_text('about'),
+                    'news': _page_text('news'),
+                    'careers': _page_text('careers'),
+                    'team': _page_text('team'),
                 },
                 message_type=message_type,
                 tone=tone,
                 num_variants=3
             )
+
 
             state['message_variants'] = [
                 {
@@ -204,11 +237,27 @@ class OutreachWorkflow:
         state['status'] = WorkflowStatus.REVIEWING.value
         try:
             selected_message = state['selected_variant']['message']
+
+            pages = state["scraped_data"].get("pages", {}) or {}
+            page_urls = state["scraped_data"].get("page_urls", {}) or {}
+
+            def _pack(k: str) -> str:
+                # include URL header so the fact-checker can align citations
+                text = ((pages.get(k) or {}).get("text") or "").strip()
+                url = (page_urls.get(k) or "").strip()
+                if not text:
+                    return ""
+                # trim to keep guardrails prompt small
+                text = text[:2000]
+                return f"URL: {url}\n{text}"
+
             source_material = {
-                'about': state['scraped_data'].get('mission', ''),
-                'news': state['scraped_data'].get('recent_news', ''),
-                'careers': '\n'.join(state['scraped_data'].get('hiring_roles', []))
+                "about": _pack("about"),
+                "careers": _pack("careers"),
+                "news": _pack("news"),
+                "team": _pack("team"),
             }
+
 
             tone = MessageTone[state.get('tone', 'PROFESSIONAL').upper()]
             guardrail_result = self.guardrails.check_message(
@@ -230,10 +279,19 @@ class OutreachWorkflow:
                 state['status'] = WorkflowStatus.APPROVED.value
             elif guardrail_result.status == GuardrailStatus.NEEDS_REVISION:
                 state['current_retry'] = state.get('current_retry', 0) + 1
+
                 if state['current_retry'] >= state.get('max_retries', 2):
                     state['status'] = WorkflowStatus.REJECTED.value
+                    state['error'] = (
+                        f"Guardrails rejected after {state['current_retry']} attempts. "
+                        f"Feedback: {guardrail_result.feedback}"
+                    )
+                else:
+                    # keep status as reviewing (so graph routes to retry)
+                    state['status'] = WorkflowStatus.REVIEWING.value
             else:
                 state['status'] = WorkflowStatus.REJECTED.value
+                state['error'] = f"Guardrails rejected. Feedback: {guardrail_result.feedback}"
             
             logger.info(
                 f"Guardrails check: {guardrail_result.status.value}, "
@@ -340,7 +398,8 @@ class OutreachWorkflow:
         contact_name: Optional[str] = None,
         contact_email: Optional[str] = None,
         skip_guardrails: bool = False,
-        max_retries: int = 2
+        max_retries: int = 2,
+        manual_urls: Optional[Dict[str, str]] = None
     ) -> OutreachState:
         
         initial_state: OutreachState = {
@@ -363,7 +422,8 @@ class OutreachWorkflow:
             'contact_email': contact_email,
             'skip_guardrails': skip_guardrails,
             'max_retries': max_retries,
-            'current_retry': 0
+            'current_retry': 0,
+            'manual_urls': manual_urls
         }
         
         logger.info(f"Starting outreach workflow for {company_url}")
