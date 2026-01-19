@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import create_engine
 
 from src.database.models import (
@@ -17,7 +17,13 @@ from src.database.models import (
     OutreachStatus,
     MessageChannel
 )
-from src.database.crud import CRUDOperations
+from src.database.crud import (
+    CompanyCRUD,
+    ContactCRUD,
+    OutreachMessageCRUD,
+    FollowUpCRUD,
+    CampaignCRUD
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,7 +61,7 @@ class TrackingAgent:
         self.db_path = db_path
         self.engine = create_engine(f'sqlite:///{db_path}')
         Base.metadata.create_all(self.engine)
-        self.crud = CRUDOperations(self.engine)
+        self.SessionLocal = sessionmaker(bind=self.engine)
         self.auto_schedule_followups = auto_schedule_followups
         self.default_followup_days = default_followup_days
 
@@ -89,47 +95,68 @@ class TrackingAgent:
                 error="Invalid message_text"
             )
         
+        session = self.SessionLocal()
         try:
-            company = self.crud.get_company_by_name(company_name)
+            # get or create company
+            company = CompanyCRUD.get_by_url(session, company_url)
             if not company:
-                company = self.crud.create_company(
+                company = CompanyCRUD.create(
+                    session=session,
                     name=company_name,
-                    website=company_url,
-                    industry=None,
-                    size=None,
-                    metadata=metadata or {}
+                    url=company_url,
+                    domain=None,
+                    mission=None,
+                    about_text=None,
+                    news_text=None,
+                    careers_text=None,
+                    team_text=None,
+                    scrape_success_count=0,
+                    scrape_failed_pages=None,
+                    notes=None
                 )
                 logger.info(f"Created new company: {company_name}")
 
+            # create contact if provided
             contact = None
             if contact_name or contact_email:
-                contact = self.crud.create_contact(
+                contact = ContactCRUD.create(
+                    session=session,
                     company_id=company.id,
                     name=contact_name,
                     email=contact_email,
                     title=target_role,
-                    linkedin_url=None
+                    linkedin_url=None,
+                    x_handle=None,
+                    is_primary=False,
+                    notes=None
                 )
                 logger.info(f"Created new contact: {contact_name or contact_email}")
 
+            # get or create campaign
             campaign = None
             if campaign_name:
-                campaign = self.crud.get_campaign_by_name(campaign_name)
+                campaign = session.query(Campaign).filter(
+                    Campaign.name == campaign_name
+                ).first()
                 if not campaign:
-                    campaign = self.crud.create_campaign(
+                    campaign = CampaignCRUD.create(
+                        session=session,
                         name=campaign_name,
+                        target_role=target_role,
                         description=f"Outreach for {target_role} positions",
-                        start_date=datetime.utcnow()
+                        resume_hash=None,
+                        notes=None
                     )
 
-            message = self.crud.create_outreach_message(
-                company_id = company.id,
-                contact_id = contact.id if contact else None,
-                campaign_id = campaign.id if campaign else None,
-                message_text = message_text,
-                channel = channel,
-                status = OutreachStatus.SENT,
-                target_role = target_role
+            # create outreach message
+            message = OutreachMessageCRUD.create(
+                session=session,
+                company_id=company.id,
+                target_role=target_role,
+                channel=channel,
+                message_content=message_text,
+                contact_id=contact.id if contact else None,
+                message_variant=1
             )
 
             logger.info(
@@ -140,15 +167,19 @@ class TrackingAgent:
             next_followup_date = None
             followup_scheduled = False
 
+            # schedule follow-up if enabled
             if self.auto_schedule_followups:
                 next_followup_date = datetime.utcnow() + timedelta(
                     days=self.default_followup_days
                 )
                 
-                followup = self.crud.create_followup(
-                    message_id=message.id,
+                followup = FollowUpCRUD.create(
+                    session=session,
+                    original_message_id=message.id,
+                    sequence_number=1,
+                    message_content="",
                     scheduled_date=next_followup_date,
-                    followup_number=1
+                    notes=None
                 )
                 
                 if followup:
@@ -166,6 +197,7 @@ class TrackingAgent:
             )
         
         except Exception as e:
+            session.rollback()
             logger.error(f"Failed to track outreach: {e}")
             return TrackingResult(
                 success=False,
@@ -174,6 +206,8 @@ class TrackingAgent:
                 next_followup_date=None,
                 error=str(e)
             )
+        finally:
+            session.close()
         
     def update_message_status(
         self,
@@ -181,8 +215,11 @@ class TrackingAgent:
         new_status: OutreachStatus,
         response_text: Optional[str] = None
     ) -> bool:
+        session = self.SessionLocal()
         try:
-            message = self.crud.get_outreach_message(message_id)
+            message = session.query(OutreachMessage).filter(
+                OutreachMessage.id == message_id
+            ).first()
 
             if not message:
                 logger.warning(f'Message {message_id} not found.')
@@ -191,27 +228,30 @@ class TrackingAgent:
             message.status = new_status
             message.updated_at = datetime.utcnow()
             if new_status == OutreachStatus.REPLIED and response_text:
-                message.reply_content  = response_text
+                message.reply_content = response_text
                 message.replied_at = datetime.utcnow()
-                if message.sent_date:
+                if message.sent_at:
                     response_time = message.replied_at - message.sent_at
                     message.response_time_hours = response_time.total_seconds() / 3600
 
-            self.crud.session.commit()
+            session.commit()
             logger.info(f"Updated message {message_id} status to {new_status.value}")
             return True
         
         except Exception as e:
+            session.rollback()
             logger.error(f"Failed to update message status: {e}")
-            self.crud.session.rollback()
             return False
+        finally:
+            session.close()
         
     def get_pending_followups(self, days_ahead: int = 7) -> List[FollowUp]:
+        session = self.SessionLocal()
         try:
             end_date = datetime.utcnow() + timedelta(days=days_ahead)
-            followups = self.crud.session.query(FollowUp).filter(
+            followups = session.query(FollowUp).filter(
                 FollowUp.scheduled_date <= end_date,
-                FollowUp.completed == False
+                FollowUp.sent_at == None
             ).order_by(FollowUp.scheduled_date).all()
 
             logger.info(f"Found {len(followups)} pending follow-ups")
@@ -220,6 +260,8 @@ class TrackingAgent:
         except Exception as e:
             logger.error(f"Failed to get pending follow-ups: {e}")
             return []
+        finally:
+            session.close()
         
     def complete_followup(
         self,
@@ -227,42 +269,50 @@ class TrackingAgent:
         notes: Optional[str] = None,
         schedule_next: bool = True
     ) -> bool:
+        session = self.SessionLocal()
         try:
-            followup = self.crud.session.query(FollowUp).get(followup_id)
+            followup = session.query(FollowUp).filter(
+                FollowUp.id == followup_id
+            ).first()
 
             if not followup:
                 logger.warning(f"Follow-up {followup_id} not found.")
                 return False
             
-            followup.completed = True
-            followup.completed_date = datetime.utcnow()
+            followup.sent_at = datetime.utcnow()
             if notes:
                 followup.notes = notes
-            if schedule_next and followup.followup_number < 3:
+            
+            if schedule_next and followup.sequence_number < 3:
                 next_date = datetime.utcnow() + timedelta(
                     days=self.default_followup_days
                 )
                 
-                next_followup = self.crud.create_followup(
-                    message_id=followup.message_id,
+                next_followup = FollowUpCRUD.create(
+                    session=session,
+                    original_message_id=followup.original_message_id,
+                    sequence_number=followup.sequence_number + 1,
+                    message_content="",
                     scheduled_date=next_date,
-                    followup_number=followup.followup_number + 1
+                    notes=None
                 )
 
                 if next_followup:
                     logger.info(
-                        f"Scheduled follow-up #{next_followup.followup_number} "
+                        f"Scheduled follow-up #{next_followup.sequence_number} "
                         f"for {next_date.date()}"
                     )
             
-            self.crud.session.commit()
+            session.commit()
             logger.info(f"Completed follow-up {followup_id}")
             return True
             
         except Exception as e:
+            session.rollback()
             logger.error(f"Failed to complete follow-up: {e}")
-            self.crud.session.rollback()
             return False
+        finally:
+            session.close()
         
     def get_outreach_stats(
         self,
@@ -270,8 +320,9 @@ class TrackingAgent:
         campaign_id: Optional[int] = None,
         days_back: Optional[int] = None,
     ) -> OutreachStats:
+        session = self.SessionLocal()
         try:
-            query = self.crud.session.query(OutreachMessage)
+            query = session.query(OutreachMessage)
             if company_id:
                 query = query.filter(OutreachMessage.company_id == company_id)
             if campaign_id: 
@@ -291,9 +342,9 @@ class TrackingAgent:
 
             response_times = [m.response_time_hours for m in messages if m.response_time_hours is not None]
             avg_response_time = (sum(response_times) / len(response_times)) if response_times else None
-            avg_response_time_hours=avg_response_time,
-            pending_followups_count = self.crud.session.query(FollowUp).filter(
-                FollowUp.completed == False
+            
+            pending_followups_count = session.query(FollowUp).filter(
+                FollowUp.sent_at == None
             ).count()
             
             return OutreachStats(
@@ -302,8 +353,8 @@ class TrackingAgent:
                 total_no_response=total_no_response,
                 total_rejected=total_rejected,
                 reply_rate=reply_rate,
-                pending_followups=pending_followups_count,
-                avg_response_time_hours=avg_response_time
+                avg_response_time_hours=avg_response_time,
+                pending_followups=pending_followups_count
             )
         
         except Exception as e:
@@ -314,17 +365,20 @@ class TrackingAgent:
                 total_no_response=0,
                 total_rejected=0,
                 reply_rate=0.0,
-                pending_followups=0,
-                avg_response_time_hours=0.0
+                avg_response_time_hours=None,
+                pending_followups=0
             )
+        finally:
+            session.close()
         
     def get_all_messages(
         self, 
         status: Optional[OutreachStatus] = None,
         limit: int = 100
     ) -> List[OutreachMessage]:
+        session = self.SessionLocal()
         try:
-            query = self.crud.session.query(OutreachMessage)
+            query = session.query(OutreachMessage)
             
             if status:
                 query = query.filter(OutreachMessage.status == status)
@@ -338,6 +392,8 @@ class TrackingAgent:
         except Exception as e:
             logger.error(f"Failed to get messages: {e}")
             return []
+        finally:
+            session.close()
 
 
 def track_new_outreach(
@@ -370,6 +426,3 @@ def track_new_outreach(
         channel=channel_enum,
         target_role=target_role
     )
-
-
-
