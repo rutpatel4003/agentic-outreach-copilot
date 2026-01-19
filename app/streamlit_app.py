@@ -20,11 +20,7 @@ logger = logging.getLogger(__name__)
 
 st.set_page_config(
     page_title="Cold Outreach Copilot",
-<<<<<<< HEAD
-    page_icon="",
-=======
     page_icon="🤖",
->>>>>>> temp-recovery
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -45,15 +41,9 @@ def init_session_state():
 
 def render_sidebar():
     with st.sidebar:
-<<<<<<< HEAD
-        st.title(" Configuration")
-        
-        st.subheader(" Resume")
-=======
         st.title("⚙️ Configuration")
-        
+
         st.subheader("📄 Resume")
->>>>>>> temp-recovery
         resume_file = st.file_uploader(
             "Upload Resume",
             type=['pdf', 'docx', 'txt'],
@@ -66,15 +56,9 @@ def render_sidebar():
             upload_dir.mkdir(parents=True, exist_ok=True)
             resume_path = upload_dir / resume_file.name
             resume_path.write_bytes(resume_file.read())
-<<<<<<< HEAD
-            st.success(f" {resume_file.name}")
-        
-        st.subheader(" Job Settings")
-=======
             st.success(f"✅ {resume_file.name}")
-        
+
         st.subheader("🎯 Job Settings")
->>>>>>> temp-recovery
         target_role = st.text_input(
             "Target Role",
             value="Software Engineer",
@@ -93,21 +77,13 @@ def render_sidebar():
             index=0
         )
         
-<<<<<<< HEAD
-        st.subheader(" Guardrails")
-=======
         st.subheader("🛡️ Guardrails")
->>>>>>> temp-recovery
         skip_guardrails = st.checkbox(
             "Skip Guardrails (faster)",
             value=False,
             help="Skip fact-checking and tone validation"
         )
-<<<<<<< HEAD
-
-=======
         
->>>>>>> temp-recovery
         max_retries = st.slider(
             "Max Retries",
             min_value=1,
@@ -115,7 +91,6 @@ def render_sidebar():
             value=2,
             help="Retry generation if guardrails fail"
         )
-<<<<<<< HEAD
 
         st.subheader(" Scraper Settings")
 
@@ -143,32 +118,21 @@ def render_sidebar():
             scroll_page = False
             js_wait_time = 0
 
-=======
-        
->>>>>>> temp-recovery
         return {
             'resume_path': str(resume_path) if resume_path else None,
             'target_role': target_role,
             'message_type': message_type.lower().replace(' ', '_'),
             'tone': tone.lower(),
             'skip_guardrails': skip_guardrails,
-<<<<<<< HEAD
             'max_retries': max_retries,
             'js_rendering': js_rendering,
             'scroll_page': scroll_page,
             'js_wait_time': js_wait_time * 1000  # convert to milliseconds
-=======
-            'max_retries': max_retries
->>>>>>> temp-recovery
         }
 
 
 def render_generate_tab(config: Dict):
-<<<<<<< HEAD
-    st.header(" Generate Outreach")
-=======
     st.header("🚀 Generate Outreach")
->>>>>>> temp-recovery
     
     col1, col2 = st.columns([2, 1])
     
@@ -180,15 +144,9 @@ def render_generate_tab(config: Dict):
             help="Enter company URLs for auto-discovery, OR leave blank and use manual URLs below"
         )
         
-<<<<<<< HEAD
-        # manual url overrides
-        with st.expander(" Advanced: Manual Page URLs (Optional)", expanded=False):
-            st.caption(" **Tip:** If you provide all manual URLs below, you can leave the company URL field above empty!")
-=======
         # Manual URL Overrides
         with st.expander("⚙️ Advanced: Manual Page URLs (Optional)", expanded=False):
             st.caption("💡 **Tip:** If you provide all manual URLs below, you can leave the company URL field above empty!")
->>>>>>> temp-recovery
             st.caption("Specify exact URLs for specific pages to bypass auto-discovery:")
             
             col_a, col_b = st.columns(2)
@@ -222,17 +180,13 @@ def render_generate_tab(config: Dict):
             contact_email = st.text_input("Contact Email (optional)")
     
     with col2:
-<<<<<<< HEAD
         js_status = f"On ({config.get('js_wait_time', 3000)//1000}s)" if config.get('js_rendering', True) else "Off"
-=======
->>>>>>> temp-recovery
         st.info(f"""
         **Configuration:**
         - Role: {config['target_role']}
         - Type: {config['message_type']}
         - Tone: {config['tone']}
         - Guardrails: {'Off' if config['skip_guardrails'] else 'On'}
-<<<<<<< HEAD
         - JS Rendering: {js_status}
         """)
     
@@ -242,16 +196,6 @@ def render_generate_tab(config: Dict):
             return
         
         # build manual urls dict
-=======
-        """)
-    
-    if st.button("🚀 Generate Messages", type="primary", use_container_width=True):
-        if not config['resume_path']:
-            st.error("❌ Please upload a resume first")
-            return
-        
-        # Build manual URLs dict
->>>>>>> temp-recovery
         manual_urls = {}
         if manual_careers:
             manual_urls['careers'] = manual_careers
@@ -262,19 +206,6 @@ def render_generate_tab(config: Dict):
         if manual_team:
             manual_urls['team'] = manual_team
         
-<<<<<<< HEAD
-        # parse company urls
-        companies = [url.strip() for url in company_input.split('\n') if url.strip()]
-        
-        # validation: either company urls or manual urls required
-        if not companies and not manual_urls:
-            st.error(" Please enter at least one company URL OR provide manual page URLs")
-            return
-        
-        # if no company urls but manual urls exist, create placeholder
-        if not companies and manual_urls:
-            # use the first manual url's domain as company url
-=======
         # Parse company URLs
         companies = [url.strip() for url in company_input.split('\n') if url.strip()]
         
@@ -286,16 +217,11 @@ def render_generate_tab(config: Dict):
         # If no company URLs but manual URLs exist, create placeholder
         if not companies and manual_urls:
             # Use the first manual URL's domain as company URL
->>>>>>> temp-recovery
             first_manual_url = list(manual_urls.values())[0]
             parsed = urlparse(first_manual_url)
             company_url_placeholder = f"{parsed.scheme}://{parsed.netloc}"
             companies = [company_url_placeholder]
-<<<<<<< HEAD
-            st.info(f"ℹ Using domain from manual URLs: {company_url_placeholder}")
-=======
             st.info(f"ℹ️ Using domain from manual URLs: {company_url_placeholder}")
->>>>>>> temp-recovery
         
         st.session_state.workflow_results = []
         progress_bar = st.progress(0)
@@ -315,33 +241,21 @@ def render_generate_tab(config: Dict):
                     contact_email=contact_email if contact_email else None,
                     skip_guardrails=config['skip_guardrails'],
                     max_retries=config['max_retries'],
-<<<<<<< HEAD
                     manual_urls=manual_urls if manual_urls else None,
                     js_rendering=config.get('js_rendering', True),
                     scroll_page=config.get('scroll_page', True),
                     js_wait_time=config.get('js_wait_time', 3000)
-=======
-                    manual_urls=manual_urls if manual_urls else None
->>>>>>> temp-recovery
                 )
                 
                 st.session_state.workflow_results.append(result)
                 
             except Exception as e:
                 logger.error(f"Failed to process {company_url}: {e}")
-<<<<<<< HEAD
-                st.error(f" Failed: {company_url} - {str(e)}")
-            
-            progress_bar.progress((i + 1) / len(companies))
-        
-        status_text.text(" All companies processed!")
-=======
                 st.error(f"❌ Failed: {company_url} - {str(e)}")
             
             progress_bar.progress((i + 1) / len(companies))
         
         status_text.text("✅ All companies processed!")
->>>>>>> temp-recovery
         st.success(f"Generated messages for {len(st.session_state.workflow_results)} companies")
         st.rerun()
     
@@ -355,30 +269,15 @@ def render_extracted_contacts(scraped_data: Dict, result_index: int = 0):
     contacts = scraped_data.get('extracted_contacts', [])
 
     if not contacts:
-<<<<<<< HEAD
-        st.warning(" No contacts automatically extracted. Try finding contacts manually:")
-        st.info("""
-        ** How to find contacts:**
-=======
         st.warning("⚠️ No contacts automatically extracted. Try finding contacts manually:")
         st.info("""
         **💡 How to find contacts:**
->>>>>>> temp-recovery
         1. Search company name + role on **LinkedIn**
         2. Use tools like Hunter.io or RocketReach for email finding
         3. Check the Team/Leadership page for names
         """)
         return None
 
-<<<<<<< HEAD
-    st.success(f" Found {len(contacts)} potential contacts!")
-
-    # create a dataframe for display
-    contact_data = []
-    for c in contacts:
-        relevance = c.get('relevance_score', 0)
-        relevance_label = " High" if relevance >= 0.7 else (" Medium" if relevance >= 0.5 else " Low")
-=======
     st.success(f"📇 Found {len(contacts)} potential contacts!")
 
     # Create a dataframe for display
@@ -386,17 +285,12 @@ def render_extracted_contacts(scraped_data: Dict, result_index: int = 0):
     for c in contacts:
         relevance = c.get('relevance_score', 0)
         relevance_label = "🔥 High" if relevance >= 0.7 else ("⭐ Medium" if relevance >= 0.5 else "○ Low")
->>>>>>> temp-recovery
 
         contact_data.append({
             'Name': c.get('name', 'Unknown'),
             'Title': c.get('title', '-'),
             'Email': c.get('email', '-'),
-<<<<<<< HEAD
-            'LinkedIn': '' if c.get('linkedin_url') else '-',
-=======
             'LinkedIn': '🔗' if c.get('linkedin_url') else '-',
->>>>>>> temp-recovery
             'Source': c.get('source_page', 'team').title(),
             'Relevance': relevance_label
         })
@@ -404,11 +298,7 @@ def render_extracted_contacts(scraped_data: Dict, result_index: int = 0):
     df = pd.DataFrame(contact_data)
     st.dataframe(df, use_container_width=True, hide_index=True)
 
-<<<<<<< HEAD
-    # let user select a contact
-=======
     # Let user select a contact
->>>>>>> temp-recovery
     contact_names = [f"{c.get('name', 'Unknown')} - {c.get('title', 'No title')}" for c in contacts]
     selected_idx = st.selectbox(
         "Select a contact to use:",
@@ -439,11 +329,7 @@ def render_extracted_contacts(scraped_data: Dict, result_index: int = 0):
             )
 
         if selected_contact.get('linkedin_url'):
-<<<<<<< HEAD
-            st.markdown(f" [View LinkedIn Profile]({selected_contact['linkedin_url']})")
-=======
             st.markdown(f"🔗 [View LinkedIn Profile]({selected_contact['linkedin_url']})")
->>>>>>> temp-recovery
 
         return selected_contact
 
@@ -455,35 +341,20 @@ def render_extracted_jobs(scraped_data: Dict, target_role: str = ""):
     jobs = scraped_data.get('extracted_jobs', [])
 
     if not jobs:
-<<<<<<< HEAD
-        st.warning(" No job listings extracted. The careers page might use JavaScript rendering.")
-        st.info(" **Tip:** Use the manual URL option to provide the exact careers search URL")
-        return
-
-    # filter for matching jobs if target role provided
-=======
         st.warning("⚠️ No job listings extracted. The careers page might use JavaScript rendering.")
         st.info("💡 **Tip:** Use the manual URL option to provide the exact careers search URL")
         return
 
     # Filter for matching jobs if target role provided
->>>>>>> temp-recovery
     if target_role:
         matching = [j for j in jobs if j.get('match_score', 0) > 0.3]
         other = [j for j in jobs if j.get('match_score', 0) <= 0.3]
 
         if matching:
-<<<<<<< HEAD
-            st.success(f" Found {len(matching)} jobs matching '{target_role}':")
-            for job in matching[:5]:
-                score = job.get('match_score', 0)
-                match_indicator = "" if score > 0.7 else ""
-=======
             st.success(f"🎯 Found {len(matching)} jobs matching '{target_role}':")
             for job in matching[:5]:
                 score = job.get('match_score', 0)
                 match_indicator = "🔥" if score > 0.7 else "⭐"
->>>>>>> temp-recovery
                 st.markdown(f"{match_indicator} **{job['title']}**")
 
         if other:
@@ -510,20 +381,12 @@ def render_scraped_data_summary(scraped_data: Dict):
             if isinstance(page_data, dict):
                 url = page_data.get('url', 'N/A')
                 text_length = page_data.get('text_length', 0)
-<<<<<<< HEAD
-                status = "" if text_length > 200 else ""
-=======
                 status = "✅" if text_length > 200 else "⚠️"
->>>>>>> temp-recovery
 
                 st.markdown(f"{status} **{page_type.title()}**: [{url}]({url})")
                 st.caption(f"   Content length: {text_length} chars")
 
-<<<<<<< HEAD
-                # show preview of content
-=======
                 # Show preview of content
->>>>>>> temp-recovery
                 text_preview = page_data.get('text', '')[:300]
                 if text_preview:
                     with st.expander(f"Preview {page_type} content"):
@@ -533,37 +396,17 @@ def render_scraped_data_summary(scraped_data: Dict):
 
 
 def render_results():
-<<<<<<< HEAD
-    st.subheader(" Results")
-
-    for i, result in enumerate(st.session_state.workflow_results):
-        with st.expander(
-            f"{'' if result['status'] == WorkflowStatus.TRACKED.value else ''} "
-=======
     st.subheader("📊 Results")
 
     for i, result in enumerate(st.session_state.workflow_results):
         with st.expander(
             f"{'✅' if result['status'] == WorkflowStatus.TRACKED.value else '❌'} "
->>>>>>> temp-recovery
             f"{result.get('company_name', 'Unknown')} - {result['status']}",
             expanded=(i == 0)
         ):
             if result.get('error'):
                 st.error(f"Error: {result['error']}")
 
-<<<<<<< HEAD
-                # show what was scraped even on error
-                scraped_data = result.get('scraped_data', {})
-                if scraped_data:
-                    # show extracted contacts even on error
-                    contacts = scraped_data.get('extracted_contacts', [])
-                    if contacts:
-                        with st.expander(" Extracted Contacts (still useful!)", expanded=True):
-                            render_extracted_contacts(scraped_data, result_index=i)
-
-                    with st.expander(" View Scraped Data"):
-=======
                 # Show what was scraped even on error
                 scraped_data = result.get('scraped_data', {})
                 if scraped_data:
@@ -574,7 +417,6 @@ def render_results():
                             render_extracted_contacts(scraped_data, result_index=i)
 
                     with st.expander("🔍 View Scraped Data"):
->>>>>>> temp-recovery
                         render_scraped_data_summary(scraped_data)
                 continue
 
@@ -589,33 +431,11 @@ def render_results():
                 score = guardrail.get('overall_score', 0)
                 st.metric("Quality", f"{score:.0%}")
 
-<<<<<<< HEAD
-            # show extracted contacts prominently
-=======
             # Show extracted contacts prominently
->>>>>>> temp-recovery
             scraped_data = result.get('scraped_data', {})
             contacts = scraped_data.get('extracted_contacts', [])
 
             if contacts:
-<<<<<<< HEAD
-                st.subheader(" Who to Contact")
-                with st.expander("View Extracted Contacts", expanded=True):
-                    render_extracted_contacts(scraped_data, result_index=i)
-            else:
-                st.info(" **Who to send this to?** No contacts were auto-extracted. Check the scraped data below or find contacts on LinkedIn.")
-
-            # show extracted jobs
-            jobs = scraped_data.get('extracted_jobs', [])
-            if jobs:
-                with st.expander(f" Job Listings Found ({len(jobs)})", expanded=False):
-                    target_role = result.get('target_role', '')
-                    render_extracted_jobs(scraped_data, target_role)
-
-            # show scraped data summary
-            if scraped_data:
-                with st.expander(" View Scraped Data (Pages Found)", expanded=False):
-=======
                 st.subheader("📇 Who to Contact")
                 with st.expander("View Extracted Contacts", expanded=True):
                     render_extracted_contacts(scraped_data, result_index=i)
@@ -632,7 +452,6 @@ def render_results():
             # Show scraped data summary
             if scraped_data:
                 with st.expander("🔍 View Scraped Data (Pages Found)", expanded=False):
->>>>>>> temp-recovery
                     render_scraped_data_summary(scraped_data)
             
             if result.get('selected_variant'):
@@ -649,19 +468,11 @@ def render_results():
                 
                 col1, col2, col3 = st.columns(3)
                 with col1:
-<<<<<<< HEAD
-                    st.caption(f" {variant['word_count']} words")
-                with col2:
-                    st.caption(f" {len(variant['citations'])} citations")
-                with col3:
-                    st.caption(f" {len(variant['skills_highlighted'])} skills")
-=======
                     st.caption(f"📝 {variant['word_count']} words")
                 with col2:
                     st.caption(f"📌 {len(variant['citations'])} citations")
                 with col3:
                     st.caption(f"💡 {len(variant['skills_highlighted'])} skills")
->>>>>>> temp-recovery
                 
                 if variant['citations']:
                     with st.expander("View Citations"):
@@ -682,11 +493,7 @@ def render_results():
 
 
 def render_tracking_tab():
-<<<<<<< HEAD
-    st.header(" CRM Dashboard")
-=======
     st.header("📊 CRM Dashboard")
->>>>>>> temp-recovery
     
     tracker = st.session_state.tracker
     
@@ -704,11 +511,7 @@ def render_tracking_tab():
         st.metric("Pending Follow-ups", stats.pending_followups)
     
     if stats.avg_response_time_hours:
-<<<<<<< HEAD
-        st.info(f" Average Response Time: {stats.avg_response_time_hours:.1f} hours")
-=======
         st.info(f"📈 Average Response Time: {stats.avg_response_time_hours:.1f} hours")
->>>>>>> temp-recovery
     
     st.divider()
     
@@ -751,17 +554,10 @@ def render_tracking_tab():
                         OutreachStatus[new_status.upper()]
                     )
                     if success:
-<<<<<<< HEAD
-                        st.success(" Status updated")
-                        st.rerun()
-                    else:
-                        st.error(" Update failed")
-=======
                         st.success("✅ Status updated")
                         st.rerun()
                     else:
                         st.error("❌ Update failed")
->>>>>>> temp-recovery
         else:
             st.info("No messages tracked yet. Generate some outreach first!")
     
@@ -772,11 +568,7 @@ def render_tracking_tab():
             for followup in followups:
                 msg = followup.original_message
                 with st.expander(
-<<<<<<< HEAD
-                    f" {followup.scheduled_date.strftime('%Y-%m-%d')} - "
-=======
                     f"📅 {followup.scheduled_date.strftime('%Y-%m-%d')} - "
->>>>>>> temp-recovery
                     f"{msg.company.name} (Follow-up #{followup.followup_number})"
                 ):
                     st.write(f"**Company:** {msg.company.name}")
@@ -795,11 +587,7 @@ def render_tracking_tab():
                             key=f"schedule_{followup.id}"
                         )
                     
-<<<<<<< HEAD
-                    if st.button(" Complete Follow-up", key=f"complete_{followup.id}"):
-=======
                     if st.button("✅ Complete Follow-up", key=f"complete_{followup.id}"):
->>>>>>> temp-recovery
                         success = tracker.complete_followup(
                             followup.id,
                             notes=notes if notes else None,
@@ -829,11 +617,7 @@ def render_tracking_tab():
 
 
 def render_reply_tab():
-<<<<<<< HEAD
-    st.header(" Reply Analysis")
-=======
     st.header("💬 Reply Analysis")
->>>>>>> temp-recovery
     
     tracker = st.session_state.tracker
     reply_agent = st.session_state.reply_agent
@@ -869,11 +653,7 @@ def render_reply_tab():
         placeholder="Paste the reply you received here..."
     )
     
-<<<<<<< HEAD
-    if st.button(" Analyze Reply", type="primary"):
-=======
     if st.button("🔍 Analyze Reply", type="primary"):
->>>>>>> temp-recovery
         if not reply_text.strip():
             st.error("Please enter a reply to analyze")
             return
@@ -911,11 +691,7 @@ def render_reply_tab():
                 
                 if analysis.suggestions:
                     st.divider()
-<<<<<<< HEAD
-                    st.subheader(" Suggested Responses")
-=======
                     st.subheader("💡 Suggested Responses")
->>>>>>> temp-recovery
                     
                     for i, suggestion in enumerate(analysis.suggestions, 1):
                         with st.expander(f"Response Option {i}", expanded=(i == 1)):
@@ -928,11 +704,7 @@ def render_reply_tab():
                             )
                             st.caption(f"Tone: {suggestion.tone} | Action: {suggestion.suggested_action}")
                 
-<<<<<<< HEAD
-                if st.button(" Mark as Replied"):
-=======
                 if st.button("✅ Mark as Replied"):
->>>>>>> temp-recovery
                     tracker.update_message_status(
                         selected_message.id,
                         OutreachStatus.REPLIED,
@@ -949,20 +721,12 @@ def render_reply_tab():
 def main():
     init_session_state()
     
-<<<<<<< HEAD
-    st.title(" Cold Outreach Copilot")
-=======
     st.title("🤖 Cold Outreach Copilot")
->>>>>>> temp-recovery
     st.caption("AI-powered job search automation with built-in guardrails")
     
     config = render_sidebar()
     
-<<<<<<< HEAD
-    tab1, tab2, tab3 = st.tabs([" Generate", " Track", " Replies"])
-=======
     tab1, tab2, tab3 = st.tabs(["🚀 Generate", "📊 Track", "💬 Replies"])
->>>>>>> temp-recovery
     
     with tab1:
         render_generate_tab(config)

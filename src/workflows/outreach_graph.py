@@ -48,6 +48,10 @@ class OutreachState(TypedDict):
     skip_guardrails: bool
     max_retries: int
     current_retry: int
+    # scraper settings
+    js_rendering: bool
+    scroll_page: bool
+    js_wait_time: int  # milliseconds
 
 class OutreachWorkflow:
     def __init__(
@@ -127,12 +131,15 @@ class OutreachWorkflow:
         state['status'] = WorkflowStatus.SCRAPING.value
         
         try:
-            # GET MANUAL URLS FROM STATE
+            # get manual urls from state
             manual_urls = state.get('manual_urls', None)
-            
+
             result = self.scraper.scrape_company(
                 state['company_url'],
-                manual_urls=manual_urls  # PASS TO SCRAPER
+                manual_urls=manual_urls,
+                js_rendering=state.get('js_rendering', True),
+                scroll_page=state.get('scroll_page', True),
+                js_wait_time=state.get('js_wait_time', 3000)
             )
             
             state['scraped_data'] = result
@@ -458,7 +465,10 @@ class OutreachWorkflow:
         contact_email: Optional[str] = None,
         skip_guardrails: bool = False,
         max_retries: int = 2,
-        manual_urls: Optional[Dict[str, str]] = None
+        manual_urls: Optional[Dict[str, str]] = None,
+        js_rendering: bool = True,
+        scroll_page: bool = True,
+        js_wait_time: int = 3000
     ) -> OutreachState:
         
         initial_state: OutreachState = {
@@ -482,7 +492,10 @@ class OutreachWorkflow:
             'skip_guardrails': skip_guardrails,
             'max_retries': max_retries,
             'current_retry': 0,
-            'manual_urls': manual_urls
+            'manual_urls': manual_urls,
+            'js_rendering': js_rendering,
+            'scroll_page': scroll_page,
+            'js_wait_time': js_wait_time
         }
         
         logger.info(f"Starting outreach workflow for {company_url}")
