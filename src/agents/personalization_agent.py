@@ -1,10 +1,11 @@
 import logging
 import json
-from typing import Dict, List, Optional, Tuple
+import re
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.tools.llm_interface import OllamaInterface
+from src.tools.llm_interface import OllamaInterface, LLMConfig
 from src.utils.resume_parser import ResumeData, ResumeParser
 from src.utils.prompt_templates import (
     PromptTemplates,
@@ -37,26 +38,30 @@ class PersonalizationResult:
 
 
 class PersonalizationAgent:
-    
+
     def __init__(
         self,
         llm_interface: Optional[OllamaInterface] = None,
         resume_parser: Optional[ResumeParser] = None,
-        model_name: str = "llama3.1:8b",
+        model_name: str = "qwen3:4b-instruct",
         temperature: float = 0.7,
         max_retries: int = 3
     ):
-        self.llm = llm_interface or OllamaInterface(model=model_name)
+        self.llm = llm_interface or OllamaInterface(config=LLMConfig(model=model_name))
         self.resume_parser = resume_parser or ResumeParser()
         self.temperature = temperature
         self.max_retries = max_retries
         self.prompt_templates = PromptTemplates()
+
+    def _count_inline_sources(self, text: str) -> int:
+        """Count inline citations in message text"""
+        return len(re.findall(r'\[source:\s*[^\]]+\]', text, flags=re.I))
     
     def generate_outreach_messages(
         self,
         resume_data: ResumeData,
         target_role: str,
-        company_data: Dict[str, any],
+        company_data: Dict[str, Any],
         message_type: MessageType = MessageType.LINKEDIN_MESSAGE,
         tone: MessageTone = MessageTone.PROFESSIONAL,
         num_variants: int = 3
@@ -102,23 +107,43 @@ class PersonalizationAgent:
                     prompt=prompt,
                     system_prompt=system_prompt,
                     temperature=self.temperature,
-                    max_tokens=2000
+                    max_tokens=900,
+                    response_format='json'
                 )
-                
+
                 parsed_response = self._parse_llm_response(response)
-                
+
                 if not parsed_response or 'variants' not in parsed_response:
                     logger.warning(f"Invalid response structure on attempt {attempt + 1}")
                     continue
-                
+
+                # Filter variants to ensure they have at least 2 inline citations
+                valid_variants = []
+                for variant_data in parsed_response['variants']:
+                    if not isinstance(variant_data, dict):
+                        continue
+
+                    message = variant_data.get('message', '')
+                    citation_count = self._count_inline_sources(message)
+
+                    if citation_count < 2:
+                        logger.warning(f"Variant has only {citation_count} inline citations; skipping")
+                        continue
+
+                    valid_variants.append(variant_data)
+
+                if not valid_variants:
+                    logger.warning(f"No variants with 2+ citations on attempt {attempt + 1}; retrying")
+                    continue
+
                 variants = self._build_message_variants(
-                    parsed_response['variants'],
+                    valid_variants,
                     message_type,
                     tone
                 )
-                
+
                 if variants:
-                    logger.info(f"Successfully generated {len(variants)} variants")
+                    logger.info(f"Successfully generated {len(variants)} variants with 2+ citations")
                     return PersonalizationResult(
                         variants=variants,
                         company_name=company_data['company_name'],
@@ -126,7 +151,7 @@ class PersonalizationAgent:
                         candidate_name=resume_data.name,
                         generation_metadata={
                             'attempt': attempt + 1,
-                            'model': self.llm.model,
+                            'model': self.llm.config.model,
                             'temperature': self.temperature,
                             'skills_used': top_skills,
                             'message_type': message_type.value,
@@ -151,7 +176,7 @@ class PersonalizationAgent:
         self,
         resume_path: str,
         target_role: str,
-        company_data: Dict[str, any],
+        company_data: Dict[str, Any],
         message_type: MessageType = MessageType.LINKEDIN_MESSAGE,
         tone: MessageTone = MessageTone.PROFESSIONAL,
         num_variants: int = 3
@@ -249,11 +274,11 @@ class PersonalizationAgent:
 def generate_personalized_outreach(
     resume_path: str,
     target_role: str,
-    company_data: Dict[str, any],
+    company_data: Dict[str, Any],
     message_type: str = "linkedin_message",
     tone: str = "professional",
     num_variants: int = 3,
-    model_name: str = "llama3.1:8b"
+    model_name: str = "qwen3:4b-instruct"
 ) -> PersonalizationResult:
     
     try:
@@ -282,4 +307,3 @@ def generate_personalized_outreach(
         tone=tone_enum,
         num_variants=num_variants
     )
-
