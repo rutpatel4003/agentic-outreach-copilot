@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from src.tools.llm_interface import OllamaInterface
+from src.tools.llm_interface import OllamaInterface, LLMConfig
 from src.utils.prompt_templates import PromptTemplates, MessageTone
 
 logging.basicConfig(level=logging.INFO)
@@ -53,12 +53,12 @@ class Guardrails:
     def __init__(
         self,
         llm_interface: Optional[OllamaInterface] = None,
-        model_name: str = "llama3.1:8b",
+        model_name: str = "qwen3:4b-instruct",
         min_citations: int = 2,
         max_word_count: int = 200,
         min_appropriateness_score: float = 7.0
     ):
-        self.llm = llm_interface or OllamaInterface(model=model_name)
+        self.llm = llm_interface or OllamaInterface(config=LLMConfig(model=model_name))
         self.min_citations = min_citations
         self.max_word_count = max_word_count
         self.min_appropriateness_score = min_appropriateness_score
@@ -316,7 +316,7 @@ def check_outreach_message(
     message: str,
     source_material: Dict[str, str],
     requested_tone: str = "professional",
-    model_name: str = "llama3.1:8b",
+    model_name: str = "qwen3:4b-instruct",
     skip_llm_checks: bool = False
 ) -> GuardrailResult:
     
