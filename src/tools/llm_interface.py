@@ -15,16 +15,16 @@ class LLMConfig:
     Configuration for LLM Interface
     """
     base_url: str = "http://localhost:11434"
-    model: str = 'llama3.1:8b'
+    model: str = 'qwen3:4b-instruct'
     temperature: float = 0.7
-    max_tokens: int = 2000
+    max_tokens: int = 900
     timeout: int = 120
     max_retries: int = 3
     retry_delay: float = 2.0
     top_p: float = 0.9
     top_k: int = 40
 
-class LLMInterface:
+class OllamaInterface:
     """
     Interface for interacting with LLMs 
     Provides both synchronous and streaming responses
@@ -33,7 +33,7 @@ class LLMInterface:
         """
         Initalize LLM interface
         """
-        self.config = config
+        self.config = config or LLMConfig()
         self._verify_connection()
 
     def _verify_connection(self) -> bool:
@@ -51,7 +51,7 @@ class LLMInterface:
                 if self.config.model not in model_names:
                     logger.warning(
                         f'Model {self.config.model} not found.'
-                        f'Available: {', '.join(model_names)}'
+                        f"Available: {', '.join(model_names)}"
                     )
                     return False
                 
@@ -68,10 +68,10 @@ class LLMInterface:
         """
         Make HTTP request to Ollama 
         """
-        url = f"{self.config.base_url}/api/endpoint"
+        url = f"{self.config.base_url}/api/{endpoint}"
         for attempt in range(self.config.max_retries):
             try: 
-                response = requests.post(url, json=payload, timeout=self.timeout, stream=stream)
+                response = requests.post(url, json=payload, timeout=self.config.timeout, stream=stream)
                 response.raise_for_status()
                 return response
             
@@ -102,7 +102,7 @@ class LLMInterface:
         
         raise RequestException("Max retries exceeded")
     
-    def generate(self, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = None, max_tokens: Optional[int] = None, stop_sequences: Optional[List[str]] = None) -> Optional[str]:
+    def generate(self, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = None, max_tokens: Optional[int] = None, stop_sequences: Optional[List[str]] = None, response_format: Optional[Any] = None) -> Optional[str]:
         """
         Generate text from prompt
         """
@@ -117,6 +117,9 @@ class LLMInterface:
                 "top_k": self.config.top_k
             }
         }
+
+        if response_format is not None:
+            payload['format'] = response_format
         
         if system_prompt:
             payload["system"] = system_prompt
@@ -173,7 +176,7 @@ class LLMInterface:
             for line in response.iter_lines():
                 if line:
                     try:
-                        chunk = json.load(line)
+                        chunk = json.loads(line)
                         if 'response' in chunk:
                             yield chunk['response']
                     except json.JSONDecodeError:
@@ -222,7 +225,8 @@ class LLMInterface:
         self,
         prompt: str,
         system_prompt: Optional[str] = None,
-        temperature: float = 0.3
+        temperature: float = 0.3,
+        max_tokens: Optional[int] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Generate and extract JSON from response
@@ -232,11 +236,12 @@ class LLMInterface:
             "Do not include any markdown formatting, code blocks, or explanatory text. "
             "Return only the raw JSON object."
         )
-        
+
         response = self.generate(
             prompt=prompt,
             system_prompt=system_prompt or default_system,
-            temperature=temperature
+            temperature=temperature,
+            max_tokens=max_tokens
         )
         
         if not response:
