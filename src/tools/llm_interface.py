@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class LLMConfig:
     """
-    Configuration for LLM Interface
+    Configuration for llm interface
     """
     base_url: str = "http://localhost:11434"
-    model: str = 'llama3.1:8b'
+    model: str = 'qwen3:4b-instruct'
     temperature: float = 0.7
     max_tokens: int = 2000
     timeout: int = 120
@@ -26,18 +26,18 @@ class LLMConfig:
 
 class LLMInterface:
     """
-    Interface for interacting with LLMs 
-    Provides both synchronous and streaming responses
+    Interface for interacting with llms 
+    provides both synchronous and streaming responses
     """
     def __init__(self, config: Optional[LLMConfig] = None):
         """
-        Initalize LLM interface
+        Initalize llm interface
         """
         self.config = config
         self._verify_connection()
 
     def _verify_connection(self) -> bool:
-        """Verify Ollama is running and accessible"""
+        """Verify ollama is running and accessible"""
         try:    
             response = requests.get(
                 f'{self.config.base_url}/api/tags', 
@@ -66,7 +66,7 @@ class LLMInterface:
         self, endpoint: str, payload: Dict[str, Any], stream: bool = False
     ) -> requests.Response:
         """
-        Make HTTP request to Ollama 
+        Make http request to ollama 
         """
         url = f"{self.config.base_url}/api/endpoint"
         for attempt in range(self.config.max_retries):
@@ -83,24 +83,24 @@ class LLMInterface:
                     raise 
 
             except ConnectionError:
-                logger.error("Connection Error - is Ollama running?")
+                logger.error("connection error - is ollama running?")
                 raise
 
             except RequestException as e:
-                logger.error(f"Request failed: {e}")
+                logger.error(f"request failed: {e}")
                 if attempt < self.config.max_retries - 1:
                     time.sleep(self.config.retry_delay)
                 else:
                     raise
 
             except RequestException as e:
-                logger.error(f"Request failed: {e}")
+                logger.error(f"request failed: {e}")
                 if attempt < self.config.max_retries - 1:
                     time.sleep(self.config.retry_delay)
                 else:
                     raise
         
-        raise RequestException("Max retries exceeded")
+        raise RequestException("max retries exceeded")
     
     def generate(self, prompt: str, system_prompt: Optional[str] = None, temperature: Optional[float] = None, max_tokens: Optional[int] = None, stop_sequences: Optional[List[str]] = None) -> Optional[str]:
         """
@@ -225,7 +225,7 @@ class LLMInterface:
         temperature: float = 0.3
     ) -> Optional[Dict[str, Any]]:
         """
-        Generate and extract JSON from response
+        Generate and extract json from response
         """
         default_system = (
             "You are a helpful assistant that responds only with valid JSON. "
