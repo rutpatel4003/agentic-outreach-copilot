@@ -388,7 +388,7 @@ class OutreachWorkflow:
                 message_text=state['selected_variant']['message'],
                 channel=channel,
                 target_role=state['target_role'],
-                metadata={
+                message_metadata={
                     'word_count': state['selected_variant']['word_count'],
                     'citations': state['selected_variant']['citations'],
                     'skills_highlighted': state['selected_variant']['skills_highlighted'],
