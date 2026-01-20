@@ -3,7 +3,11 @@ from urllib.parse import urljoin, urlparse
 from datetime import datetime
 from dataclasses import dataclass
 import re
+import logging
 from src.tools.web_scraper import WebScraper
+from src.config import config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -123,16 +127,21 @@ class ScraperAgent:
 
     def __init__(
         self,
-        cache_dir: str = 'data/scraped_content',
-        request_delay: float = 2.0,
-        max_retries: int = 2
+        cache_dir: Optional[str] = None,
+        request_delay: Optional[float] = None,
+        max_retries: Optional[int] = None
     ):
+        # Use config defaults if not provided
+        cache_dir = cache_dir or config.scraper.cache_dir
+        request_delay = request_delay if request_delay is not None else config.scraper.rate_limit
+        max_retries = max_retries if max_retries is not None else config.scraper.max_retries
+
         self.scraper = WebScraper(cache_dir=cache_dir, request_delay=request_delay)
         self.max_retries = max_retries
-        # default js rendering settings
-        self._js_rendering = True
+        # default js rendering settings from config
+        self._js_rendering = config.scraper.js_rendering
         self._scroll_page = True
-        self._js_wait_time = 3000
+        self._js_wait_time = config.scraper.js_wait_time
     
     def _normalize_url(self, url: str) -> str:
         """Ensure url has proper format"""
@@ -168,7 +177,7 @@ class ScraperAgent:
             result = self.scraper.scrape_page(url)
             
             if result['success'] and result['text'] and len(result['text']) > 200:
-                print(f"Found via subdomain: {url}")
+                logger.info(f"Found via subdomain: {url}")
                 return result
         
         return None
@@ -207,7 +216,7 @@ class ScraperAgent:
                 result = self.scraper.scrape_page(url)
 
             if result['success'] and result['text'] and len(result['text']) > 200:
-                print(f"Found via path: {url}")
+                logger.info(f"Found via path: {url}")
                 return result
 
         return None
@@ -256,23 +265,23 @@ class ScraperAgent:
         2. Try path patterns (/careers)
         3. Parse homepage for actual links
         """
-        print(f"\nSearching for {page_type} page...")
-        
+        logger.info(f"Searching for {page_type} page...")
+
         # strategy 1: Subdomain patterns
-        print(f"Strategy 1: Trying subdomains...")
+        logger.debug(f"Strategy 1: Trying subdomains...")
         result = self._try_subdomain_patterns(base_domain, page_type)
         if result:
             return result
-        
+
         # strategy 2: Path patterns
-        print(f"Strategy 2: Trying path patterns...")
+        logger.debug(f"Strategy 2: Trying path patterns...")
         result = self._try_path_patterns(company_url, page_type)
         if result:
             return result
-        
+
         # strategy 3: Parse homepage for actual links
         if homepage_html:
-            print(f"Strategy 3: Parsing homepage for links...")
+            logger.debug(f"Strategy 3: Parsing homepage for links...")
             links = self._find_links_on_homepage(homepage_html, page_type)
             
             for link in links:
@@ -284,10 +293,10 @@ class ScraperAgent:
                 
                 result = self.scraper.scrape_page(url)
                 if result['success'] and result['text'] and len(result['text']) > 200:
-                    print(f"found via homepage link: {url}")
+                    logger.info(f"Found via homepage link: {url}")
                     return result
-        
-        print(f"  could not find {page_type} page")
+
+        logger.warning(f"Could not find {page_type} page")
         return None
     
     def scrape_company(
@@ -308,9 +317,9 @@ class ScraperAgent:
         self._js_wait_time = js_wait_time
 
         if js_rendering:
-            print(f"js rendering: ON (wait: {js_wait_time}ms, scroll: {scroll_page})")
+            logger.info(f"JS rendering: ON (wait: {js_wait_time}ms, scroll: {scroll_page})")
         else:
-            print(f"js rendering: OFF (fast mode)")
+            logger.info(f"JS rendering: OFF (fast mode)")
         company_url = self._normalize_url(company_url)
         base_domain = self._get_base_domain(company_url)
 
@@ -327,50 +336,50 @@ class ScraperAgent:
             'metadata': {}
         }
         
-        print(f"\n{'='*60}")
-        print(f"Scraping company: {result['company_name']}")
-        print(f"Base domain: {base_domain}")
-        
+        logger.info(f"{'='*60}")
+        logger.info(f"Scraping company: {result['company_name']}")
+        logger.info(f"Base domain: {base_domain}")
+
         # CHECK IF ALL PAGES HAVE MANUAL URLS
         all_manual = manual_urls and all(
             page_type in manual_urls for page_type in pages_to_scrape
         )
-        
+
         if all_manual:
-            print("All pages have manual URLs - skipping auto-discovery")
-        
-        print(f"{'='*60}")
+            logger.info("All pages have manual URLs - skipping auto-discovery")
+
+        logger.info(f"{'='*60}")
 
         # get homepage only if we need auto-discovery
         homepage_html = None
         if not all_manual:
-            print("\nFetching homepage for link discovery...")
+            logger.info("Fetching homepage for link discovery...")
             try:
                 homepage_result = self.scraper.scrape_page(company_url)
                 homepage_html = homepage_result.get('html', '') if homepage_result['success'] else None
-                
+
                 if homepage_html:
-                    print("  homepage fetched successfully")
+                    logger.info("Homepage fetched successfully")
                 else:
-                    print("  could not fetch homepage - will rely on manual URLs or patterns")
+                    logger.warning("Could not fetch homepage - will rely on manual URLs or patterns")
             except Exception as e:
-                print(f"  homepage fetch failed: {e}")
+                logger.error(f"Homepage fetch failed: {e}")
                 if not manual_urls:
-                    print("  no manual URLs provided and homepage failed - scraping may fail")
+                    logger.warning("No manual URLs provided and homepage failed - scraping may fail")
 
         # now try to scrape each page type
         for page_type in pages_to_scrape:
             # check if manual url provided
             if manual_urls and page_type in manual_urls:
                 manual_url = manual_urls[page_type]
-                print(f"\n  using manual URL for {page_type}: {manual_url}")
+                logger.info(f"Using manual URL for {page_type}: {manual_url}")
 
                 # use js rendering based on settings (especially important for careers pages)
                 use_js = self._js_rendering and (page_type == 'careers' or self._js_rendering)
                 if use_js:
-                    print(f"  using javascript rendering...")
+                    logger.debug(f"Using JavaScript rendering...")
                     if self._scroll_page:
-                        print(f"  will scroll and wait {self._js_wait_time}ms for dynamic content...")
+                        logger.debug(f"Will scroll and wait {self._js_wait_time}ms for dynamic content...")
 
                 scrape_result = self.scraper.scrape_page(
                     manual_url,
@@ -390,11 +399,11 @@ class ScraperAgent:
                         'scraped_at': scrape_result['scraped_at']
                     }
                     result['success_count'] += 1
-                    print(f"  successfully scraped manual URL ({len(scrape_result['text'])} chars)")
+                    logger.info(f"Successfully scraped manual URL ({len(scrape_result['text'])} chars)")
                 else:
                     result['failed_pages'].append(page_type)
                     error_msg = scrape_result.get('error', 'Unknown error')
-                    print(f"  failed to scrape manual URL: {error_msg}")
+                    logger.error(f"Failed to scrape manual URL: {error_msg}")
             else:
                 # use auto-discovery (only if homepage available)
                 if homepage_html or not all_manual:
@@ -419,7 +428,7 @@ class ScraperAgent:
                         result['failed_pages'].append(page_type)
                 else:
                     result['failed_pages'].append(page_type)
-                    print(f"Skipping {page_type} - no manual URL and no homepage")
+                    logger.warning(f"Skipping {page_type} - no manual URL and no homepage")
 
         result['metadata'] = {
             'total_pages_attempted': len(pages_to_scrape),
@@ -431,7 +440,7 @@ class ScraperAgent:
         }
 
         # extract contacts from scraped pages
-        print("\nExtracting contacts from scraped pages...")
+        logger.info("Extracting contacts from scraped pages...")
         contacts = self.extract_contacts_from_company_data(result)
         result['extracted_contacts'] = [
             {
@@ -446,25 +455,25 @@ class ScraperAgent:
         ]
 
         if contacts:
-            print(f"  found {len(contacts)} potential contacts:")
+            logger.info(f"Found {len(contacts)} potential contacts:")
             for c in contacts[:5]:  # show top 5
                 title_str = f" - {c.title}" if c.title else ""
                 score_str = f" (relevance: {c.relevance_score:.1f})"
-                print(f"    {c.name}{title_str}{score_str}")
+                logger.info(f"  {c.name}{title_str}{score_str}")
             if len(contacts) > 5:
-                print(f"    ... and {len(contacts) - 5} more")
+                logger.info(f"  ... and {len(contacts) - 5} more")
         else:
-            print("  no contacts found - you may need to find contacts manually")
+            logger.warning("No contacts found - you may need to find contacts manually")
 
         # extract job listings from careers page
-        print("\nextracting job listings from careers page...")
+        logger.info("Extracting job listings from careers page...")
         jobs = []
         if 'careers' in result['pages']:
             careers_page = result['pages']['careers']
             careers_html = careers_page.get('html', '')
             careers_text = careers_page.get('text', '')
 
-            print(f"  ├─ Careers page: {len(careers_text)} chars text, {len(careers_html)} chars HTML")
+            logger.debug(f"Careers page: {len(careers_text)} chars text, {len(careers_html)} chars HTML")
 
             jobs = self.extract_job_listings(
                 text=careers_text,
@@ -475,20 +484,20 @@ class ScraperAgent:
         result['extracted_jobs'] = jobs
 
         if jobs:
-            print(f"  ✓ Found {len(jobs)} job titles mentioned:")
+            logger.info(f"Found {len(jobs)} job titles mentioned:")
             for job in jobs[:5]:
-                print(f"    • {job['title']}")
+                logger.info(f"  • {job['title']}")
             if len(jobs) > 5:
-                print(f"... and {len(jobs) - 5} more")
+                logger.info(f"... and {len(jobs) - 5} more")
         else:
-            print("No job listings extracted from text")
+            logger.warning("No job listings extracted from text")
             if 'careers' in result['pages']:
-                print("Tip: The careers page was scraped with JS rendering enabled")
-                print("If jobs are still missing, the site may use complex JS frameworks")
+                logger.info("Tip: The careers page was scraped with JS rendering enabled")
+                logger.info("If jobs are still missing, the site may use complex JS frameworks")
 
-        print(f"\n{'='*60}")
-        print(f"Scraping complete: {result['success_count']}/{len(pages_to_scrape)} pages")
-        print(f"{'='*60}\n")
+        logger.info(f"{'='*60}")
+        logger.info(f"Scraping complete: {result['success_count']}/{len(pages_to_scrape)} pages")
+        logger.info(f"{'='*60}")
 
         return result
     
