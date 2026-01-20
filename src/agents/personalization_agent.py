@@ -12,6 +12,7 @@ from src.utils.prompt_templates import (
     MessageType,
     MessageTone
 )
+from src.config import config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,10 +44,15 @@ class PersonalizationAgent:
         self,
         llm_interface: Optional[OllamaInterface] = None,
         resume_parser: Optional[ResumeParser] = None,
-        model_name: str = "qwen3:4b-instruct",
-        temperature: float = 0.7,
-        max_retries: int = 3
+        model_name: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_retries: Optional[int] = None
     ):
+        # use config defaults if not provided
+        model_name = model_name or config.llm.model
+        temperature = temperature if temperature is not None else config.llm.temperature
+        max_retries = max_retries if max_retries is not None else config.llm.max_retries
+
         self.llm = llm_interface or OllamaInterface(config=LLMConfig(model=model_name))
         self.resume_parser = resume_parser or ResumeParser()
         self.temperature = temperature
@@ -107,7 +113,7 @@ class PersonalizationAgent:
                     prompt=prompt,
                     system_prompt=system_prompt,
                     temperature=self.temperature,
-                    max_tokens=900,
+                    max_tokens=config.llm.max_tokens,
                     response_format='json'
                 )
 
