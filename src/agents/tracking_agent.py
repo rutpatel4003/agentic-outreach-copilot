@@ -1,10 +1,11 @@
 import logging
+import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker, joinedload
 from sqlalchemy import create_engine
 
 from src.database.models import (
@@ -75,7 +76,7 @@ class TrackingAgent:
             channel: MessageChannel,
             target_role: str,
             campaign_name: Optional[str] = None,
-            metadata: Optional[Dict] = None,
+            message_metadata: Optional[Dict] = None,
     ) -> TrackingResult:
         if not company_name or len(company_name.strip()) < 2:
             return TrackingResult(
@@ -149,6 +150,7 @@ class TrackingAgent:
                     )
 
             # create outreach message
+            metadata_str = json.dumps(message_metadata) if message_metadata else None
             message = OutreachMessageCRUD.create(
                 session=session,
                 company_id=company.id,
@@ -156,7 +158,8 @@ class TrackingAgent:
                 channel=channel,
                 message_content=message_text,
                 contact_id=contact.id if contact else None,
-                message_variant=1
+                message_variant=1,
+                message_metadata=metadata_str
             )
 
             logger.info(
@@ -178,7 +181,7 @@ class TrackingAgent:
                     original_message_id=message.id,
                     sequence_number=1,
                     message_content="",
-                    scheduled_date=next_followup_date,
+                    scheduled_at=next_followup_date,
                     notes=None
                 )
                 
@@ -293,7 +296,7 @@ class TrackingAgent:
                     original_message_id=followup.original_message_id,
                     sequence_number=followup.sequence_number + 1,
                     message_content="",
-                    scheduled_date=next_date,
+                    scheduled_at=next_date,
                     notes=None
                 )
 
@@ -372,21 +375,24 @@ class TrackingAgent:
             session.close()
         
     def get_all_messages(
-        self, 
+        self,
         status: Optional[OutreachStatus] = None,
         limit: int = 100
     ) -> List[OutreachMessage]:
         session = self.SessionLocal()
         try:
-            query = session.query(OutreachMessage)
-            
+            # eager load company relationship to avoid DetachedInstanceError
+            query = session.query(OutreachMessage).options(
+                joinedload(OutreachMessage.company)
+            )
+
             if status:
                 query = query.filter(OutreachMessage.status == status)
-            
+
             messages = query.order_by(
                 OutreachMessage.sent_at.desc()
             ).limit(limit).all()
-            
+
             return messages
             
         except Exception as e:
