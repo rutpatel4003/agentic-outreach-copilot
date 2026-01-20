@@ -6,14 +6,21 @@ from sqlalchemy import and_, or_, desc, func
 import logging
 
 from .models import (
-    Company, 
-    Contact, 
+    Company,
+    Contact,
     OutreachMessage,
     FollowUp,
     Campaign,
     OutreachStatus,
     MessageChannel,
     ReplyCategory
+)
+from src.utils.validators import (
+    validate_url,
+    validate_email,
+    validate_company_name,
+    validate_contact_data,
+    ValidationError
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -26,12 +33,24 @@ class CompanyCRUD:
 
     @staticmethod
     def create(session: Session, name: str, url: str, domain: Optional[str]=None, mission: Optional[str]=None, about_text: Optional[str]=None,
-               news_text: Optional[str] = None, careers_text: Optional[str]=None, team_text: Optional[str]=None, scrape_sucess_count: int=0,
+               news_text: Optional[str] = None, careers_text: Optional[str]=None, team_text: Optional[str]=None, scrape_success_count: int=0,
                scrape_failed_pages: Optional[str] = None, notes: Optional[str] = None) -> Optional[Company]:
         """
-        Create a new company record
+        Create a new company record with validation
         """
         try:
+            # validate company name
+            is_valid, error = validate_company_name(name)
+            if not is_valid:
+                logger.error(f"Invalid company name: {error}")
+                return None
+
+            # validate URL
+            is_valid, error = validate_url(url)
+            if not is_valid:
+                logger.error(f"Invalid company URL: {error}")
+                return None
+
             company = Company(name=name.strip(), 
                             url = url.strip(),
                             domain = domain.strip() if domain else None,
@@ -40,7 +59,7 @@ class CompanyCRUD:
                             careers_text = careers_text, 
                             news_text = news_text,
                             team_text = team_text, 
-                            scrape_sucess_count = scrape_sucess_count,
+                            scrape_success_count = scrape_success_count,
                             scrape_failed_pages = scrape_failed_pages,
                             notes = notes)
             session.add(company)
@@ -144,7 +163,7 @@ class ContactCRUD:
     CRUD operations for Contact model
     """
     def create(session: Session,
-               company_id: int, 
+               company_id: int,
                name: Optional[str] = None,
                title: Optional[str] = None,
                email: Optional[str] = None,
@@ -153,9 +172,22 @@ class ContactCRUD:
                is_primary: bool = False,
                notes: Optional[str] = None) -> Optional[Contact]:
         """
-        Create a new contact
+        Create a new contact with validation
         """
         try:
+            # validate contact data
+            all_valid, errors = validate_contact_data(
+                name=name,
+                email=email,
+                linkedin_url=linkedin_url,
+                title=title
+            )
+
+            if not all_valid:
+                for error in errors:
+                    logger.error(f"Invalid contact data: {error}")
+                return None
+
             contact = Contact(
                 company_id=company_id,
                 name=name.strip() if name else None,
