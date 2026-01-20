@@ -19,9 +19,12 @@ class WebScraper:
     """
     Robust web scraper with caching, rate limiting and error handling
     """
-    def __init__(self, cache_dir: str='data/scraped_content', cache_expiry_days: int=7, request_delay: float=2.0, timeout: int=30000, headless: bool=True):
+    def __init__(self, cache_dir: str='data/scraped_content', cache_expiry_days: int=7, request_delay: float=2.0, timeout: int=15000, headless: bool=True):
         """
         Initialize the scraper
+
+        Args:
+            timeout: Page load timeout in milliseconds (default 15000ms = 15 seconds)
         """
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -123,17 +126,76 @@ class WebScraper:
 
             with sync_playwright() as p:
                 print(f'  ├─ Launching browser...')
-                browser = p.chromium.launch(headless=self.headless)
+                browser = p.chromium.launch(
+                    headless=self.headless,
+                    args=[
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-dev-shm-usage',
+                        '--no-sandbox'
+                    ]
+                )
                 context = browser.new_context(
-                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    viewport={'width': 1920, 'height': 1080},
+                    locale='en-US',
+                    timezone_id='America/New_York',
+                    permissions=['geolocation'],
+                    extra_http_headers={
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Accept-Encoding': 'gzip, deflate, br',
+                        'DNT': '1',
+                        'Connection': 'keep-alive',
+                        'Upgrade-Insecure-Requests': '1'
+                    }
                 )
                 page = context.new_page()
+
+                # add stealth JavaScript to hide automation
+                page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    });
+
+                    // Hide Chrome automation
+                    window.navigator.chrome = {
+                        runtime: {}
+                    };
+
+                    // Mock plugins and permissions
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5]
+                    });
+
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['en-US', 'en']
+                    });
+                """)
 
                 # choose wait strategy based on JS rendering needs
                 wait_strategy = 'networkidle' if wait_for_js else 'domcontentloaded'
                 print(f'  ├─ Navigating (wait: {wait_strategy})...')
 
-                response = page.goto(url, wait_until=wait_strategy, timeout=self.timeout)
+                # Try with preferred wait strategy, fallback if timeout
+                response = None
+                try:
+                    response = page.goto(url, wait_until=wait_strategy, timeout=self.timeout)
+                except PlaywrightTimeout:
+                    if wait_strategy == 'networkidle':
+                        # networkidle can timeout on slow sites, fallback to domcontentloaded
+                        print(f'  ├─ ⚠️ Networkidle timeout, trying domcontentloaded...')
+                        try:
+                            response = page.goto(url, wait_until='domcontentloaded', timeout=self.timeout)
+                        except PlaywrightTimeout:
+                            result['error'] = f"Timeout ({self.timeout}ms) on both networkidle and domcontentloaded"
+                            print(f'  └─ ❌ Timeout error: {result["error"]}')
+                            browser.close()
+                            return result
+                    else:
+                        result['error'] = f"Timeout ({self.timeout}ms)"
+                        print(f'  └─ ❌ Timeout error')
+                        browser.close()
+                        return result
 
                 if response is None:
                     result['error'] = "No response from server"
@@ -209,6 +271,26 @@ class WebScraper:
                     for script in soup(['script', 'style', 'nav', 'footer', 'header']):
                         script.decompose()
                     clean_text = soup.get_text(separator='\n', strip=True)
+
+                # check for 404 content even if status was 200
+                if clean_text and title:
+                    title_lower = title.lower()
+                    text_lower = clean_text[:500].lower()  # check first 500 chars
+
+                    # common 404 patterns
+                    not_found_patterns = [
+                        '404', 'not found', 'page not found', 'page doesn\'t exist',
+                        'can\'t find', 'cannot find', 'no longer available',
+                        'sorry, the page', 'error 404'
+                    ]
+
+                    # check if multiple patterns match (stronger signal)
+                    matches = sum(1 for pattern in not_found_patterns if pattern in title_lower or pattern in text_lower)
+
+                    if matches >= 2:  # at least 2 patterns = likely 404
+                        result['error'] = "404 content detected (page not found)"
+                        print(f'  └─ ❌ 404 content detected')
+                        return result
 
                 result['html'] = html
                 result['text'] = clean_text
