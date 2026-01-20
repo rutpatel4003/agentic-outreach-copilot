@@ -51,7 +51,7 @@ class CompanyCRUD:
             return company
         
         except IntegrityError as e:
-            session.rollbackI()
+            session.rollback()
             logger.error(f"Company with URL: {url} already exists: {e}")
             return None
         except SQLAlchemyError as e:
@@ -82,7 +82,7 @@ class CompanyCRUD:
             return None
     
     @staticmethod
-    def updateA(session: Session, company_id: int, **kwargs) -> Optional[Company]:
+    def update(session: Session, company_id: int, **kwargs) -> Optional[Company]:
         """
         Update company fields
         """
@@ -162,7 +162,7 @@ class ContactCRUD:
                 title=title.strip() if title else None,
                 email=email.strip().lower() if email else None,
                 linkedin_url=linkedin_url.strip() if linkedin_url else None,
-                twitter_handle=x_handle.strip() if x_handle else None,
+                x_handle=x_handle.strip() if x_handle else None,
                 is_primary=is_primary,
                 notes=notes
             )
@@ -240,7 +240,7 @@ class OutreachMessageCRUD:
         guardrails_issues: Optional[str] = None,
         citations: Optional[str] = None,
         notes: Optional[str] = None,
-        metadata: Optional[str] = None
+        message_metadata: Optional[str] = None
     ) -> Optional[OutreachMessage]:
         """
         Create a new outreach message
@@ -259,7 +259,7 @@ class OutreachMessageCRUD:
                 guardrails_issues=guardrails_issues,
                 citations=citations,
                 notes=notes,
-                metadata=metadata
+                message_metadata=message_metadata
             )
             session.add(message)
             session.commit()

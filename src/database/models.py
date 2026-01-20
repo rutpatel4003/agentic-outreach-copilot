@@ -125,7 +125,7 @@ class OutreachMessage(Base):
     open_count = Column(Integer, default=0)
     click_count = Column(Integer, default=0)
     notes = Column(Text, nullable=True)
-    metadata = Column(Text, nullable=True)
+    message_metadata = Column(Text, nullable=True)
     company = relationship("Company", back_populates='outreach_messages')
     contact = relationship('Contact', back_populates='outreach_messages')
     follow_ups = relationship('FollowUp', back_populates='original_message', cascade='all, delete-orphan')
