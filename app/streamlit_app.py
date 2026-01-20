@@ -407,10 +407,10 @@ def render_results():
             if result.get('error'):
                 st.error(f"Error: {result['error']}")
 
-                # Show what was scraped even on error
+                # show what was scraped even on error
                 scraped_data = result.get('scraped_data', {})
                 if scraped_data:
-                    # Show extracted contacts even on error
+                    # show extracted contacts even on error
                     contacts = scraped_data.get('extracted_contacts', [])
                     if contacts:
                         with st.expander("📇 Extracted Contacts (still useful!)", expanded=True):
@@ -431,7 +431,7 @@ def render_results():
                 score = guardrail.get('overall_score', 0)
                 st.metric("Quality", f"{score:.0%}")
 
-            # Show extracted contacts prominently
+            # show extracted contacts prominently
             scraped_data = result.get('scraped_data', {})
             contacts = scraped_data.get('extracted_contacts', [])
 
@@ -442,14 +442,14 @@ def render_results():
             else:
                 st.info("👤 **Who to send this to?** No contacts were auto-extracted. Check the scraped data below or find contacts on LinkedIn.")
 
-            # Show extracted jobs
+            # show extracted jobs
             jobs = scraped_data.get('extracted_jobs', [])
             if jobs:
                 with st.expander(f"💼 Job Listings Found ({len(jobs)})", expanded=False):
                     target_role = result.get('target_role', '')
                     render_extracted_jobs(scraped_data, target_role)
 
-            # Show scraped data summary
+            # show scraped data summary
             if scraped_data:
                 with st.expander("🔍 View Scraped Data (Pages Found)", expanded=False):
                     render_scraped_data_summary(scraped_data)
