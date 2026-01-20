@@ -180,7 +180,7 @@ python -c "from src.database.models import init_db; init_db()"
 streamlit run app/streamlit_app.py
 ```
 
-### Option 2: Docker (Recommended for Production)
+### Option 2: Docker (Recommended for Production - Coming Soon)
 
 ```bash
 # Build and run with docker-compose
@@ -311,22 +311,22 @@ pytest tests/test_integration.py -v
 
 ## 📈 Performance & Metrics
 
-### Benchmarks (on M1 MacBook / i5 Windows)
+### Benchmarks (To be tested)
 
 | Operation | Time | Notes |
 |-----------|------|-------|
-| Company scraping (4 pages) | 15-30s | Depends on site speed & JS rendering |
-| Message generation (3 variants) | 10-20s | Qwen 3 4B local inference |
-| Guardrails check | 5-10s | LLM-based fact checking |
-| Full workflow | 40-60s | End-to-end automation |
+| Company scraping (4 pages) | N/A | Depends on site speed & JS rendering |
+| Message generation (3 variants) | N/A | Qwen 3 4B local inference |
+| Guardrails check | N/A | LLM-based fact checking |
+| Full workflow | N/A | End-to-end automation |
 
-### Accuracy Metrics (tested on 50 companies)
+### Accuracy Metrics (To be tested)
 
-- **Scraping success rate**: 85% (4/4 pages)
-- **Contact extraction**: 6.2 contacts/company avg
-- **Job matching**: 78% found relevant listings
-- **Guardrail approval**: 68% first-try, 89% after retries
-- **Citation accuracy**: 95% of claims verifiable
+- **Scraping success rate**: N/A
+- **Contact extraction**: N/A
+- **Job matching**: N/A
+- **Guardrail approval**: N/A
+- **Citation accuracy**: N/A
 
 ---
 
@@ -496,16 +496,15 @@ make clean
 - [x] CRM with follow-up scheduling
 - [x] Reply classification
 - [x] Streamlit dashboard
-- [x] Docker support
-- [x] CI/CD pipeline
 - [x] Input validation
 - [x] Centralized configuration
 
 ### 🚧 In Progress
 
-- [ ] Increase test coverage to 80%+
 - [ ] Database migrations with Alembic
 - [ ] A/B testing for message variants
+- [ ] CI/CD pipeline
+- [ ] Docker support
 - [ ] Enhanced analytics dashboard
 
 ### 📋 Planned
@@ -517,7 +516,6 @@ make clean
 - [ ] User authentication & multi-tenancy
 - [ ] Bulk company upload (CSV)
 - [ ] Export to PDF reports
-- [ ] Background job queue (Celery)
 
 ---
 
@@ -556,9 +554,8 @@ This project is licensed under the **MIT License**. See [LICENSE](LICENSE) file 
 ## 👨‍💻 Author
 
 **Your Name**
-- GitHub: [@yourusername](https://github.com/yourusername)
-- LinkedIn: [Your Profile](https://linkedin.com/in/yourprofile)
-- Email: your.email@example.com
+- GitHub: [@yourusername](https://github.com/rutpatel4003)
+- LinkedIn: [Your Profile](https://linkedin.com/in/rutpatel6684)
 
 ---
 
@@ -584,7 +581,7 @@ This project is licensed under the **MIT License**. See [LICENSE](LICENSE) file 
 
 **Cold Outreach Copilot** — AI-Powered Job Application Assistant
 
-Built a **production-grade multi-agent system** using **LangGraph** for orchestrating web scraping, personalized message generation, and quality assurance workflows. Implemented **guardrails system** with fact-checking and tone validation to prevent AI hallucination, achieving **89% approval rate**. Designed **normalized database schema** with **SQLAlchemy ORM** for tracking outreach campaigns, contacts, and response analytics. Created **CI/CD pipeline** with GitHub Actions and achieved **70% test coverage**. Containerized with **Docker** for deployment.
+Built a **production-grade multi-agent system** using **LangGraph** for orchestrating web scraping, personalized message generation, and quality assurance workflows. Implemented **guardrails system** with fact-checking and tone validation to prevent AI hallucination. Designed **normalized database schema** with **SQLAlchemy ORM** for tracking outreach campaigns, contacts, and response analytics. 
 
 **Tech Stack**: Python, LangGraph, Ollama, Playwright, SQLAlchemy, Streamlit, Docker, pytest, GitHub Actions
 
