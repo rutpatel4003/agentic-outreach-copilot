@@ -565,7 +565,6 @@ This project is licensed under the **MIT License**. See [LICENSE](LICENSE) file 
 
 ## 👨‍💻 Author
 
-**Your Name**
 - GitHub: [@rutpatel4003](https://github.com/rutpatel4003)
 - LinkedIn: [Rut Patel](https://linkedin.com/in/rutpatel6684)
 
