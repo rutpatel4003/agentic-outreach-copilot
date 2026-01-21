@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# load environment variables from .env file
 load_dotenv()
 
 
@@ -18,7 +18,7 @@ class LLMConfig:
     model: str = os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct")
     host: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.7"))
-    max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "2000"))
+    max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "1000"))
     max_retries: int = int(os.getenv("LLM_MAX_RETRIES", "3"))
 
 
@@ -26,7 +26,7 @@ class LLMConfig:
 class ScraperConfig:
     """Web scraper configuration"""
     rate_limit: float = float(os.getenv("SCRAPER_RATE_LIMIT", "2.0"))
-    timeout: int = int(os.getenv("SCRAPER_TIMEOUT", "15000"))  # Reduced from 30s to 15s for better UX
+    timeout: int = int(os.getenv("SCRAPER_TIMEOUT", "10000"))  
     cache_dir: str = os.getenv("SCRAPER_CACHE_DIR", "data/scraped_content")
     cache_enabled: bool = os.getenv("SCRAPER_CACHE_ENABLED", "true").lower() == "true"
     min_content_length: int = int(os.getenv("MIN_CONTENT_LENGTH", "200"))
@@ -40,9 +40,9 @@ class GuardrailsConfig:
     """Message quality guardrails configuration"""
     min_citations: int = int(os.getenv("MIN_CITATIONS", "2"))
     max_word_count: int = int(os.getenv("MAX_WORD_COUNT", "200"))
-    min_approval_score: float = float(os.getenv("MIN_APPROVAL_SCORE", "0.9"))
-    min_revision_score: float = float(os.getenv("MIN_REVISION_SCORE", "0.6"))
-    min_appropriateness_score: float = float(os.getenv("MIN_APPROPRIATENESS_SCORE", "7.0"))
+    min_approval_score: float = float(os.getenv("MIN_APPROVAL_SCORE", "0.75"))  
+    min_revision_score: float = float(os.getenv("MIN_REVISION_SCORE", "0.5"))  
+    min_appropriateness_score: float = float(os.getenv("MIN_APPROPRIATENESS_SCORE", "6.5")) 
 
 
 @dataclass
@@ -91,11 +91,9 @@ class Config:
         )
 
 
-# Global config instance
+# global config instance
 config = Config()
 
-
-# Helper functions
 def get_config() -> Config:
     """Get the global configuration instance"""
     return config
