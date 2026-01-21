@@ -252,14 +252,23 @@ class TrackingAgent:
         session = self.SessionLocal()
         try:
             end_date = datetime.utcnow() + timedelta(days=days_ahead)
-            followups = session.query(FollowUp).filter(
-                FollowUp.scheduled_date <= end_date,
-                FollowUp.sent_at == None
-            ).order_by(FollowUp.scheduled_date).all()
+            followups = (
+                session.query(FollowUp)
+                .options(
+                    joinedload(FollowUp.original_message).joinedload(OutreachMessage.company),
+                    joinedload(FollowUp.original_message).joinedload(OutreachMessage.contact),
+                )
+                .filter(
+                    FollowUp.scheduled_date <= end_date,
+                    FollowUp.sent_at == None
+                )
+                .order_by(FollowUp.scheduled_date)
+                .all()
+            )
 
             logger.info(f"Found {len(followups)} pending follow-ups")
             return followups
-            
+
         except Exception as e:
             logger.error(f"Failed to get pending follow-ups: {e}")
             return []
