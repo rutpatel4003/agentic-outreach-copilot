@@ -24,6 +24,7 @@ Thumbs.db
 htmlcov/
 .tox/
 .nox/
+tests/
 
 # ---- Packaging / build ----
 build/
@@ -40,8 +41,7 @@ test-results/
 trace.zip
 
 # ---- Local data/cache (your project) ----
-data/scraped_content/
-data/cache/
+data/
 outreach.db
 *.sqlite
 *.sqlite3
