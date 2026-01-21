@@ -24,15 +24,38 @@ CRITICAL RULES:
 2. NEVER make claims not found in provided company data
 3. Connect candidate skills to specific company needs
 4. Use the specified tone consistently
-5. End with a clear, low-pressure CTA"""
+5. End with a clear, low-pressure CTA
+
+ABSOLUTELY FORBIDDEN - DO NOT DO THIS:
+NEVER write "At [Company Name], I built..." - the candidate has NEVER worked at the target company
+NEVER claim the candidate has past experience AT the company they're applying to
+The candidate is APPLYING for a job, they are NOT a current or former employee
+"Relevant Experience" is from OTHER companies (past jobs), NOT the target company
+Correct: "In my previous role at [Other Company], I built..."
+Correct: "I've architected AWS pipelines that could help Nuro scale..."
+Correct: "My experience with [skill] aligns with Nuro's mission to..."
+WRONG: "At Nuro, I architected..." (they don't work there!)"""
 
     PERSONALIZATION_TEMPLATE = """Generate a personalized {message_type} for a job application.
 
-CANDIDATE PROFILE:
+CANDIDATE PROFILE (THE SENDER - this is who is WRITING the message):
 Name: {candidate_name}
 Target Role: {target_role}
 Top Skills: {top_skills}
-Relevant Experience: {relevant_experience}
+Relevant Experience (from PAST jobs at OTHER companies): {relevant_experience}
+
+CRITICAL INSTRUCTIONS:
+- {candidate_name} is the SENDER (the person applying for the job)
+- Write from {candidate_name}'s perspective ("I", "my", "me")
+- DO NOT address the message to {candidate_name} - that's the sender's own name!
+- For LinkedIn messages: Start with "Hi," or skip greeting entirely
+- For emails: Use "Hi [Hiring Manager]," or "Hello,"
+- NEVER write "Hi {candidate_name}" - that makes no sense!
+- For LinkedIn messages: Do NOT include email-style sign-offs like "Best regards," "Sincerely," or your name at the end. Just end with your CTA question.
+- For emails only: You may include a brief sign-off and your first name.
+
+REMINDER: The candidate is APPLYING to {company_name}. They have NEVER worked there before.
+Do NOT write "At {company_name}, I..." - that would be a lie!
 
 COMPANY INFORMATION:
 Company Name: {company_name}
@@ -49,12 +72,27 @@ REQUIREMENTS:
 5. Connect 2-3 candidate skills to company needs
 6. End with clear CTA: {cta_type}
 
+VARIANT FOCUS - CRITICAL REQUIREMENT:
+This variant MUST focus exclusively on: {variant_focus}
+
+FOCUS GUIDELINES:
+- If "Mission/About": Lead with company mission, values, or core technology. Cite [source: about]
+- If "Recent News": Lead with specific recent achievement, announcement, or milestone. Cite [source: news]
+- If "Open Roles": Lead with job description alignment, team needs, or role requirements. Cite [source: careers]
+- If "Team/People": Lead with team structure, leadership, or specific people mentioned. Cite [source: team]
+
+The opening sentence MUST be completely different from other variants.
+DO NOT use generic openings like "I'm applying for..." or "I wanted to reach out..."
+Instead, start with the focus area directly (e.g., "Your recent launch of X...", "Your mission to Y...", "The role's focus on Z...")
+
 CITATIONS (mandatory):
 - Include at least 2 inline citations in the message body.
 - Citations MUST be exactly one of: [source: about], [source: careers], [source: news], [source: team]
 - Do NOT cite raw URLs. Do NOT invent sources.
 PERSPECTIVE:
-- You are the candidate reaching out. Never say “our company/team” or imply you work there.
+- You are the candidate reaching out. Never say "our company/team" or imply you work there.
+
+{revision_feedback}
 
 Generate {num_variants} variants (slightly different angles/openings).
 
@@ -77,6 +115,11 @@ CRITICAL RULES:
 1. IGNORE subjective/relationship statements about the recipient (e.g., "impressed by your profile", "love your background", "excited about", "passionate about") - these are NOT fact claims requiring verification
 2. IGNORE statements about the candidate's own skills/experience - only verify company facts
 3. ONLY verify factual claims about the company (mission, products, news, people, achievements)
+
+EXTREMELY IMPORTANT:
+- If a sentence says "I built...", "I architected...", "I developed..." → This is about the CANDIDATE, NOT the company. DO NOT check it.
+- If a sentence starts with "At [Company]" but then talks about what "I" did → This is the candidate describing their PAST work (they're applying TO the company, not FROM the company). DO NOT check it.
+- ONLY check claims that directly describe the COMPANY itself (e.g., "Nuro is building autonomous delivery vehicles")
 
 For each FACTUAL claim about the company:
 1. Verify if it appears in the source material
@@ -101,9 +144,13 @@ WHAT TO CHECK:
 
 WHAT TO IGNORE (DO NOT FLAG):
 - Subjective statements about the recipient ("impressed by", "excited about", "love your")
-- Statements about the candidate's own skills/experience
+- Statements about the candidate's own skills/experience (starts with "I built", "I architected", "My experience with")
+- Statements like "At [Company], I..." - this is the candidate describing their PAST work at OTHER companies, NOT a claim about the target company
 - Generic industry statements
 - Relationship-building phrases
+
+CRITICAL: The candidate is APPLYING to the company. They have NOT worked there before.
+Any sentence with "I" as the subject is describing the CANDIDATE'S experience, not the company's facts.
 
 For each FACTUAL claim about the company:
 1. Can it be verified in source material (exact or paraphrase)?
@@ -238,7 +285,9 @@ OUTPUT FORMAT (JSON):
         key_people: Optional[List[str]],
         message_type: MessageType,
         tone: MessageTone,
-        num_variants: int = 3
+        num_variants: int = 3,
+        revision_feedback: Optional[List[str]] = None,
+        variant_focus: str = "Mission/About"
     ) -> str:
         word_limits = {
             MessageType.LINKEDIN_CONNECTION: 100,
@@ -251,6 +300,14 @@ OUTPUT FORMAT (JSON):
             MessageType.LINKEDIN_MESSAGE: "Schedule brief call or ask for referral",
             MessageType.EMAIL: "Schedule call or request portfolio review"
         }
+
+        feedback_text = ""
+        if revision_feedback:
+            feedback_text = (
+                "\nPREVIOUS ATTEMPT HAD ISSUES - FIX THESE:\n"
+                + "\n".join(f"- {fb}" for fb in revision_feedback)
+                + "\n"
+            )
 
         return PromptTemplates.PERSONALIZATION_TEMPLATE.format(
             candidate_name=candidate_name or "I",
@@ -266,7 +323,9 @@ OUTPUT FORMAT (JSON):
             tone=tone.value.title(),
             word_limit=word_limits[message_type],
             cta_type=cta_types[message_type],
-            num_variants=num_variants
+            num_variants=num_variants,
+            revision_feedback=feedback_text,
+            variant_focus=variant_focus
         )
     
     @staticmethod
