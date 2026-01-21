@@ -70,110 +70,161 @@ class PersonalizationAgent:
         company_data: Dict[str, Any],
         message_type: MessageType = MessageType.LINKEDIN_MESSAGE,
         tone: MessageTone = MessageTone.PROFESSIONAL,
-        num_variants: int = 3
+        num_variants: int = 3,
+        revision_feedback: Optional[List[str]] = None
     ) -> PersonalizationResult:
-        
+
         if not company_data.get('company_name'):
             raise ValueError("company_name is required in company_data")
-        
+
         if not target_role or len(target_role.strip()) < 3:
             raise ValueError("target_role must be a valid job title")
-        
+
         if num_variants < 1 or num_variants > 5:
             raise ValueError("num_variants must be between 1 and 5")
-        
+
         logger.info(
             f"Generating {num_variants} {message_type.value} variants for "
             f"{company_data['company_name']} - {target_role}"
         )
-        
+
         top_skills = resume_data.skills[:8] if resume_data.skills else []
         relevant_experience = resume_data.experience[:3] if resume_data.experience else []
-        
-        prompt = self.prompt_templates.format_personalization_prompt(
-            candidate_name=resume_data.name,
-            target_role=target_role,
-            top_skills=top_skills,
-            relevant_experience=relevant_experience,
-            company_name=company_data['company_name'],
-            company_mission=company_data.get('mission', ''),
-            recent_news=company_data.get('recent_news', ''),
-            open_roles=company_data.get('hiring_roles', []),
-            key_people=company_data.get('key_people', []),
-            message_type=message_type,
-            tone=tone,
-            num_variants=num_variants
-        )
-        
+
         system_prompt = self.prompt_templates.PERSONALIZATION_SYSTEM
-        
-        for attempt in range(self.max_retries):
-            try:
-                response = self.llm.generate(
-                    prompt=prompt,
-                    system_prompt=system_prompt,
-                    temperature=self.temperature,
-                    max_tokens=config.llm.max_tokens,
-                    response_format='json'
-                )
 
-                parsed_response = self._parse_llm_response(response)
+        focus_angles = [
+            "Mission/About",
+            "Recent News",
+            "Open Roles",
+            "Team/People",
+        ]
 
-                if not parsed_response or 'variants' not in parsed_response:
-                    logger.warning(f"Invalid response structure on attempt {attempt + 1}")
-                    continue
+        def build_prompt(focus: str) -> str:
+            return self.prompt_templates.format_personalization_prompt(
+                candidate_name=resume_data.name,
+                target_role=target_role,
+                top_skills=top_skills,
+                relevant_experience=relevant_experience,
+                company_name=company_data['company_name'],
+                company_mission=company_data.get('mission', ''),
+                recent_news=company_data.get('recent_news', ''),
+                open_roles=company_data.get('hiring_roles', []),
+                key_people=company_data.get('key_people', []),
+                message_type=message_type,
+                tone=tone,
+                num_variants=1,
+                revision_feedback=revision_feedback,
+                variant_focus=focus
+            )
 
-                # filter variants to ensure they have at least 2 inline citations
-                valid_variants = []
-                for variant_data in parsed_response['variants']:
-                    if not isinstance(variant_data, dict):
+        valid_variants: List[Dict] = []
+        seen_signatures = set()
+
+        for i in range(num_variants):
+            focus = focus_angles[i % len(focus_angles)]
+            logger.info(f"🎯 Generating variant {i + 1}/{num_variants} with focus: '{focus}'")
+            prompt = build_prompt(focus)
+
+            # verify focus instruction is in prompt
+            if focus not in prompt:
+                logger.error(f"Focus '{focus}' not found in prompt! Check format_personalization_prompt()")
+            else:
+                logger.debug(f"Focus instruction verified in prompt")
+
+            variant_added = False
+            for attempt in range(self.max_retries):
+                try:
+                    response = self.llm.generate(
+                        prompt=prompt,
+                        system_prompt=system_prompt,
+                        temperature=self.temperature,
+                        max_tokens=config.llm.max_tokens,
+                        response_format='json'
+                    )
+
+                    parsed_response = self._parse_llm_response(response)
+                    if not parsed_response or 'variants' not in parsed_response:
+                        logger.warning(f"Invalid response structure for variant {i + 1} (attempt {attempt + 1})")
                         continue
 
-                    message = variant_data.get('message', '')
+                    candidate = parsed_response['variants'][0] if parsed_response['variants'] else None
+                    if not isinstance(candidate, dict):
+                        continue
+
+                    message = (candidate.get('message') or "").strip()
                     citation_count = self._count_inline_sources(message)
 
+                    # log first 100 chars to verify uniqueness
+                    preview = message[:100].replace('\n', ' ')
+                    logger.info(f"   Generated preview: '{preview}...'")
+
                     if citation_count < 2:
-                        logger.warning(f"Variant has only {citation_count} inline citations; skipping")
+                        logger.warning(f"   Variant {i + 1} has only {citation_count} citations; retrying")
                         continue
 
-                    valid_variants.append(variant_data)
+                    # normalize the same way the UI does before dedupe
+                    normalized = re.sub(r'\[source:\s*[^\]]+\]', '', message)
+                    normalized = re.sub(r'\s+', ' ', normalized).strip().lower()
 
-                if not valid_variants:
-                    logger.warning(f"No variants with 2+ citations on attempt {attempt + 1}; retrying")
+                    if not normalized:
+                        continue
+
+                    if normalized in seen_signatures:
+                        logger.warning(f"   Variant {i + 1} is a near-duplicate after normalization; retrying")
+                        continue
+
+                    logger.info(f"   ✅ Variant {i + 1} accepted (focus: {focus}, citations: {citation_count})")
+                    seen_signatures.add(normalized)
+                    valid_variants.append(candidate)
+                    variant_added = True
+                    break
+
+                except json.JSONDecodeError as e:
+                    logger.warning(f"JSON parsing failed for variant {i + 1} (attempt {attempt + 1}): {e}")
                     continue
+                except Exception as e:
+                    logger.error(f"Generation failed for variant {i + 1} (attempt {attempt + 1}): {e}")
+                    if attempt == self.max_retries - 1:
+                        break
 
-                variants = self._build_message_variants(
-                    valid_variants,
-                    message_type,
-                    tone
-                )
+            if not variant_added:
+                logger.warning(f"Failed to produce a valid unique variant for focus '{focus}'")
 
-                if variants:
-                    logger.info(f"Successfully generated {len(variants)} variants with 2+ citations")
-                    return PersonalizationResult(
-                        variants=variants,
-                        company_name=company_data['company_name'],
-                        target_role=target_role,
-                        candidate_name=resume_data.name,
-                        generation_metadata={
-                            'attempt': attempt + 1,
-                            'model': self.llm.config.model,
-                            'temperature': self.temperature,
-                            'skills_used': top_skills,
-                            'message_type': message_type.value,
-                            'tone': tone.value
-                        }
-                    )
-                
-            except json.JSONDecodeError as e:
-                logger.warning(f"JSON parsing failed on attempt {attempt + 1}: {e}")
-                continue
-            except Exception as e:
-                logger.error(f"Generation failed on attempt {attempt + 1}: {e}")
-                if attempt == self.max_retries - 1:
-                    raise
-                continue
-        
+        if not valid_variants:
+            raise RuntimeError(
+                f"Failed to generate messages after {self.max_retries} attempts"
+            )
+
+        logger.info(f"Generated {len(valid_variants)} unique variants (requested: {num_variants})")
+
+        variants = self._build_message_variants(
+            valid_variants,
+            message_type,
+            tone
+        )
+
+        if variants:
+            logger.info(f"Successfully built {len(variants)} MessageVariant objects with 2+ citations")
+            # log first 50 chars of each to verify uniqueness
+            for idx, v in enumerate(variants):
+                preview = v.message[:50].replace('\n', ' ')
+                logger.info(f"   Final Variant {idx + 1}: '{preview}...'")
+            return PersonalizationResult(
+                variants=variants,
+                company_name=company_data['company_name'],
+                target_role=target_role,
+                candidate_name=resume_data.name,
+                generation_metadata={
+                    'attempt': 1,
+                    'model': self.llm.config.model,
+                    'temperature': self.temperature,
+                    'skills_used': top_skills,
+                    'message_type': message_type.value,
+                    'tone': tone.value
+                }
+            )
+
         raise RuntimeError(
             f"Failed to generate messages after {self.max_retries} attempts"
         )
