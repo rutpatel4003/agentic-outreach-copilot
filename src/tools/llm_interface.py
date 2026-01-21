@@ -1,6 +1,7 @@
 import json
 import time
 import logging
+import os
 from typing import Optional, List, Dict, Any, Generator
 from dataclasses import dataclass
 import requests
@@ -14,12 +15,12 @@ class LLMConfig:
     """
     Configuration for llm interface
     """
-    base_url: str = "http://localhost:11434"
-    model: str = 'qwen3:4b-instruct'
-    temperature: float = 0.7
-    max_tokens: int = 900
+    base_url: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    model: str = os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct")
+    temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+    max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "900"))
     timeout: int = 120
-    max_retries: int = 3
+    max_retries: int = int(os.getenv("LLM_MAX_RETRIES", "3"))
     retry_delay: float = 2.0
     top_p: float = 0.9
     top_k: int = 40

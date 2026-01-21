@@ -230,7 +230,7 @@ class ScraperAgent:
         Parse homepage HTML to find actual links to careers/about pages
         """
         keywords = {
-            'careers': ['career', 'job', 'join', 'work with us', 'opportunities'],
+            'careers': ['career', 'job', 'join', 'work with us', 'opportunities', 'jobs'],
             'about': ['about', 'company', 'who we are', 'our story'],
             'news': ['news', 'blog', 'press', 'media', 'newsroom'],
             'team': ['team', 'leadership', 'people', 'our team']
