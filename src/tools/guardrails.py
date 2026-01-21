@@ -152,10 +152,10 @@ class Guardrails:
                 feedback.append("Tone checking could not be completed")
         
         overall_score = passed_checks / total_checks if total_checks > 0 else 0.0
-        
-        if overall_score >= 0.9:
+
+        if overall_score >= 0.75:
             status = GuardrailStatus.APPROVED
-        elif overall_score >= 0.6:
+        elif overall_score >= 0.5:
             status = GuardrailStatus.NEEDS_REVISION
         else:
             status = GuardrailStatus.REJECTED
