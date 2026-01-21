@@ -1,0 +1,42 @@
+# Cold Outreach Copilot - Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core Framework
+streamlit>=1.28.0
+langgraph>=0.0.40
+
+# LLM Integration
+ollama>=0.1.0
+
+# Web Scraping
+playwright>=1.40.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+lxml_html_clean>=0.1.0
+trafilatura>=1.6.0
+
+# Database
+sqlalchemy>=2.0.0
+
+# Document Parsing
+pypdf>=3.17.0
+python-docx>=1.0.0
+pdfplumber>=0.10.0
+
+# Data Processing
+pandas>=2.0.0
+
+# HTTP & Networking
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Utilities
+python-dateutil>=2.8.0
+python-dotenv>=1.0.0
+
+# Development & Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Type Checking (optional)
+# mypy>=1.5.0
