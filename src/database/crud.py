@@ -489,7 +489,8 @@ class FollowUpCRUD:
                 original_message_id=original_message_id,
                 sequence_number=sequence_number,
                 message_content=message_content.strip(),
-                scheduled_at=scheduled_at,
+                scheduled_date=scheduled_at,  
+                followup_number=sequence_number, 
                 notes=notes
             )
             
