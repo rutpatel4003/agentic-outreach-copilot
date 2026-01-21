@@ -61,16 +61,26 @@ class OutreachWorkflow:
         guardrails: Optional[Guardrails] = None,
         tracking_agent: Optional[TrackingAgent] = None,
         resume_parser: Optional[ResumeParser] = None,
-        model_name: str = 'qwen3:4b-instruct'
+        model_name: str = 'qwen3:4b-instruct',
+        progress_callback: Optional[callable] = None
     ):
         self.scraper = scraper_agent or ScraperAgent()
         self.personalizer = personalization_agent or PersonalizationAgent(model_name=model_name)
         self.guardrails = guardrails or Guardrails(model_name=model_name)
         self.tracker = tracking_agent or TrackingAgent()
         self.resume_parser = resume_parser or ResumeParser()
+        self.progress_callback = progress_callback
         self.workflow = self._build_workflow()
         self.memory = MemorySaver()
         self.app = self.workflow.compile(checkpointer = self.memory)
+
+    def _report_progress(self, step: str, progress: float, status: str):
+        """Report progress to callback if provided"""
+        if self.progress_callback:
+            try:
+                self.progress_callback(step=step, progress=progress, status=status)
+            except Exception as e:
+                logger.warning(f"Progress callback error: {e}")
 
     def _build_workflow(self) -> StateGraph:
         workflow = StateGraph(OutreachState)
@@ -107,6 +117,7 @@ class OutreachWorkflow:
         return workflow
     
     def _parse_resume_node(self, state: OutreachState) -> OutreachState:
+        self._report_progress('parse_resume', 0.1, '📄 Parsing resume...')
         logger.info(f"Parsing resume: {state['resume_path']}")
         try:
             resume_data = self.resume_parser.parse(state['resume_path'])
@@ -126,10 +137,11 @@ class OutreachWorkflow:
     def _scrape_company_node(self, state: OutreachState) -> OutreachState:
         if state.get('status') == WorkflowStatus.FAILED.value:
             return state
-        
+
+        self._report_progress('scrape_company', 0.2, '🌐 Scraping company website...')
         logger.info(f"Scraping company: {state['company_url']}")
         state['status'] = WorkflowStatus.SCRAPING.value
-        
+
         try:
             # get manual urls from state
             manual_urls = state.get('manual_urls', None)
@@ -231,7 +243,8 @@ class OutreachWorkflow:
     def _generate_messages_node(self, state: OutreachState) -> OutreachState:
         if state.get('status') == WorkflowStatus.FAILED.value:
             return state
-        
+
+        self._report_progress('generate_messages', 0.5, '✍️ Generating personalized messages...')
         logger.info('Generating personalized messages')
         state['status'] = WorkflowStatus.PERSONALIZING.value
         try:
@@ -248,6 +261,13 @@ class OutreachWorkflow:
             # extract the convenience fields that scraper already prepared
             scraped_data = state.get('scraped_data', {})
 
+            # get revision feedback from previous guardrails check
+            revision_feedback = None
+            if state.get('guardrail_result'):
+                feedback_list = state['guardrail_result'].get('feedback', [])
+                if feedback_list:
+                    revision_feedback = feedback_list
+
             result = self.personalizer.generate_outreach_messages(
                 resume_data=state['resume_data'],
                 target_role=state['target_role'],
@@ -262,11 +282,12 @@ class OutreachWorkflow:
                     'careers_text': scraped_data.get('careers_text', ''),
                     'team_text': scraped_data.get('team_text', ''),
                     'hiring_roles': [],  # can be populated if scraper extracts job listings - in progress currently
-                    'key_people': [],  # can be populated if scraper extracts team members - in progress currently
+                    'key_people': [],  # can be populated if scraper extracts job listings - in progress currently
                 },
                 message_type=message_type,
                 tone=tone,
-                num_variants=3
+                num_variants=3,
+                revision_feedback=revision_feedback
             )
 
 
@@ -298,7 +319,8 @@ class OutreachWorkflow:
     def _check_guardrails_node(self, state: OutreachState) -> OutreachState:
         if state.get('status') == WorkflowStatus.FAILED.value:
             return state
-        
+
+        self._report_progress('check_guardrails', 0.7, '🛡️ Checking message quality...')
         logger.info('Checking guardrails')
         state['status'] = WorkflowStatus.REVIEWING.value
         try:
@@ -373,7 +395,8 @@ class OutreachWorkflow:
     def _track_outreach_node(self, state: OutreachState) -> OutreachState:
         if state.get('status') == WorkflowStatus.FAILED.value:
             return state
-        
+
+        self._report_progress('track_outreach', 0.9, '💾 Saving to database...')
         logger.info(f'Tracking outreach in CRM')
         state['status'] = WorkflowStatus.TRACKED.value
 
@@ -410,12 +433,13 @@ class OutreachWorkflow:
             logger.info(
                 f"Outreach tracked: Message ID {tracking_result.message_id}"
             )
-            
+            self._report_progress('complete', 1.0, '✅ Complete!')
+
         except Exception as e:
             logger.error(f"Tracking failed: {e}")
             state['status'] = WorkflowStatus.FAILED.value
             state['error'] = f"Tracking failed: {str(e)}"
-        
+
         return state
     
     def _handle_failure_node(self, state: OutreachState) -> OutreachState:
