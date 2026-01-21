@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 import pandas as pd
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -37,6 +37,8 @@ def init_session_state():
         st.session_state.workflow_results = []
     if 'current_result' not in st.session_state:
         st.session_state.current_result = None
+    if 'company_groups' not in st.session_state:
+        st.session_state.company_groups = []  # List of {name, url, manual_urls: {about, careers, news, team}}
 
 
 def render_sidebar():
@@ -133,130 +135,323 @@ def render_sidebar():
 
 def render_generate_tab(config: Dict):
     st.header("🚀 Generate Outreach")
+
+    # input method tabs
+    input_tab1, input_tab2, input_tab3 = st.tabs(["📝 Quick Entry", "📁 CSV Upload", "📦 Company Groups"])
+
+    companies_to_process = []  # list of {url, manual_urls, contact_name, contact_email}
+
+    with input_tab1:
+        st.subheader("Quick Entry")
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            company_input = st.text_area(
+                "Company URLs (one per line)",
+                height=100,
+                placeholder="https://nuro.ai\nhttps://openai.com",
+                help="Enter company URLs for auto-discovery",
+                key="quick_company_urls"
+            )
+
+            # manual URL Overrides 
+            with st.expander("⚙️ Manual Page URLs (Optional)", expanded=False):
+                st.caption("💡 **Tip:** Comma-separate multiple URLs. First URL is used for the first company, etc.")
+
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    manual_careers = st.text_input(
+                        "Careers URLs",
+                        placeholder="https://nuro.ai/careers, https://openai.com/careers",
+                        help="Comma-separated careers page URLs",
+                        key="quick_manual_careers"
+                    )
+                    manual_news = st.text_input(
+                        "News URLs",
+                        placeholder="https://nuro.ai/blog, https://openai.com/news",
+                        help="Comma-separated news page URLs",
+                        key="quick_manual_news"
+                    )
+                with col_b:
+                    manual_about = st.text_input(
+                        "About URLs",
+                        placeholder="https://nuro.ai/company, https://openai.com/about",
+                        help="Comma-separated about page URLs",
+                        key="quick_manual_about"
+                    )
+                    manual_team = st.text_input(
+                        "Team URLs",
+                        placeholder="https://nuro.ai/team, https://openai.com/team",
+                        help="Comma-separated team page URLs",
+                        key="quick_manual_team"
+                    )
+
+            contact_col1, contact_col2 = st.columns(2)
+            with contact_col1:
+                contact_name = st.text_input("Contact Name (optional)", key="quick_contact_name")
+            with contact_col2:
+                contact_email = st.text_input("Contact Email (optional)", key="quick_contact_email")
+
+        with col2:
+            js_status = f"On ({config.get('js_wait_time', 3000)//1000}s)" if config.get('js_rendering', True) else "Off"
+            st.info(f"""
+            **Configuration:**
+            - Role: {config['target_role']}
+            - Type: {config['message_type']}
+            - Tone: {config['tone']}
+            - Guardrails: {'Off' if config['skip_guardrails'] else 'On'}
+            - JS Rendering: {js_status}
+            """)
+
+    with input_tab2:
+        st.subheader("CSV Upload")
+        st.caption("Upload a CSV with columns: `company_name`, `company_url`, `target_role` (optional), `manual_about`, `manual_careers`, `manual_news`, `manual_team`")
+
+        csv_file = st.file_uploader("Upload CSV", type=['csv'], key="csv_upload")
+
+        if csv_file:
+            try:
+                df = pd.read_csv(csv_file)
+                st.success(f"✅ Loaded {len(df)} companies")
+                st.dataframe(df.head(10), use_container_width=True)
+
+                # store parsed companies
+                if 'csv_companies' not in st.session_state:
+                    st.session_state.csv_companies = []
+
+                st.session_state.csv_companies = []
+                for _, row in df.iterrows():
+                    manual_urls = {}
+                    if pd.notna(row.get('manual_about', '')):
+                        manual_urls['about'] = str(row['manual_about']).strip()
+                    if pd.notna(row.get('manual_careers', '')):
+                        manual_urls['careers'] = str(row['manual_careers']).strip()
+                    if pd.notna(row.get('manual_news', '')):
+                        manual_urls['news'] = str(row['manual_news']).strip()
+                    if pd.notna(row.get('manual_team', '')):
+                        manual_urls['team'] = str(row['manual_team']).strip()
+
+                    st.session_state.csv_companies.append({
+                        'url': row['company_url'],
+                        'name': row.get('company_name', ''),
+                        'target_role': row.get('target_role', config['target_role']),
+                        'manual_urls': manual_urls if manual_urls else None
+                    })
+
+            except Exception as e:
+                st.error(f"❌ Failed to parse CSV: {e}")
+
+        # download sample CSV
+        sample_csv_path = Path("data/sample_companies.csv")
+        if sample_csv_path.exists():
+            st.download_button(
+                "📥 Download Sample CSV",
+                data=sample_csv_path.read_text(),
+                file_name="sample_companies.csv",
+                mime="text/csv"
+            )
+        else:
+            st.caption("Sample CSV not found. Create `data/sample_companies.csv`")
+
+    with input_tab3:
+        st.subheader("Company Groups")
+        st.caption("Create named groups with custom manual URLs for each company.")
+
+        # add new group form
+        with st.expander("➕ Add New Company Group", expanded=True):
+            group_name = st.text_input("Group Name", placeholder="Nuro - Software Engineer", key="new_group_name")
+            group_url = st.text_input("Company URL", placeholder="https://nuro.ai", key="new_group_url")
+
+            gcol1, gcol2 = st.columns(2)
+            with gcol1:
+                group_careers = st.text_input("Careers URL", key="new_group_careers")
+                group_news = st.text_input("News URL", key="new_group_news")
+            with gcol2:
+                group_about = st.text_input("About URL", key="new_group_about")
+                group_team = st.text_input("Team URL", key="new_group_team")
+
+            if st.button("➕ Add Group", key="add_group_btn"):
+                if group_url:
+                    manual_urls = {}
+                    if group_careers:
+                        manual_urls['careers'] = group_careers
+                    if group_about:
+                        manual_urls['about'] = group_about
+                    if group_news:
+                        manual_urls['news'] = group_news
+                    if group_team:
+                        manual_urls['team'] = group_team
+
+                    st.session_state.company_groups.append({
+                        'name': group_name or group_url,
+                        'url': group_url,
+                        'manual_urls': manual_urls if manual_urls else None
+                    })
+                    st.success(f"✅ Added: {group_name or group_url}")
+                    st.rerun()
+                else:
+                    st.error("❌ Company URL is required")
+
+        # show existing groups
+        if st.session_state.company_groups:
+            st.markdown("**📦 Saved Groups:**")
+            for idx, group in enumerate(st.session_state.company_groups):
+                col_g1, col_g2 = st.columns([4, 1])
+                with col_g1:
+                    manual_count = len(group.get('manual_urls', {}) or {})
+                    st.markdown(f"**{idx+1}. {group['name']}** - {group['url']} ({manual_count} manual URLs)")
+                with col_g2:
+                    if st.button("🗑️", key=f"delete_group_{idx}"):
+                        st.session_state.company_groups.pop(idx)
+                        st.rerun()
+
+            if st.button("🗑️ Clear All Groups", key="clear_groups"):
+                st.session_state.company_groups = []
+                st.rerun()
+        else:
+            st.info("No groups added yet. Create your first group above!")
     
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        company_input = st.text_area(
-            "Company URLs (one per line)",
-            height=120,
-            placeholder="https://example.com\nhttps://another-company.com",
-            help="Enter company URLs for auto-discovery, OR leave blank and use manual URLs below"
-        )
-        
-        # Manual URL Overrides
-        with st.expander("⚙️ Advanced: Manual Page URLs (Optional)", expanded=False):
-            st.caption("💡 **Tip:** If you provide all manual URLs below, you can leave the company URL field above empty!")
-            st.caption("Specify exact URLs for specific pages to bypass auto-discovery:")
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                manual_careers = st.text_input(
-                    "Careers Page URL",
-                    placeholder="https://careers.microsoft.com/v2/global/en/home.html",
-                    help="Exact URL of careers/jobs page"
-                )
-                manual_news = st.text_input(
-                    "News Page URL",
-                    placeholder="https://news.company.com",
-                    help="Exact URL of news/press page"
-                )
-            with col_b:
-                manual_about = st.text_input(
-                    "About Page URL",
-                    placeholder="https://about.company.com",
-                    help="Exact URL of about/company page"
-                )
-                manual_team = st.text_input(
-                    "Team Page URL",
-                    placeholder="https://company.com/leadership",
-                    help="Exact URL of team/leadership page"
-                )
-        
-        contact_col1, contact_col2 = st.columns(2)
-        with contact_col1:
-            contact_name = st.text_input("Contact Name (optional)")
-        with contact_col2:
-            contact_email = st.text_input("Contact Email (optional)")
-    
-    with col2:
-        js_status = f"On ({config.get('js_wait_time', 3000)//1000}s)" if config.get('js_rendering', True) else "Off"
-        st.info(f"""
-        **Configuration:**
-        - Role: {config['target_role']}
-        - Type: {config['message_type']}
-        - Tone: {config['tone']}
-        - Guardrails: {'Off' if config['skip_guardrails'] else 'On'}
-        - JS Rendering: {js_status}
-        """)
-    
-    if st.button(" Generate Messages", type="primary", use_container_width=True):
+    # generate button (outside tabs, always visible)
+    st.divider()
+
+    if st.button("🚀 Generate Messages", type="primary", use_container_width=True):
         if not config['resume_path']:
-            st.error(" Please upload a resume first")
+            st.error("❌ Please upload a resume first")
             return
-        
-        # build manual urls dict
-        manual_urls = {}
-        if manual_careers:
-            manual_urls['careers'] = manual_careers
-        if manual_about:
-            manual_urls['about'] = manual_about
-        if manual_news:
-            manual_urls['news'] = manual_news
-        if manual_team:
-            manual_urls['team'] = manual_team
-        
-        # Parse company URLs
-        companies = [url.strip() for url in company_input.split('\n') if url.strip()]
-        
-        # Validation: Either company URLs OR manual URLs required
-        if not companies and not manual_urls:
-            st.error("❌ Please enter at least one company URL OR provide manual page URLs")
+
+        companies_to_process = []
+
+        # 1. check Quick Entry tab
+        quick_companies = [url.strip() for url in company_input.split('\n') if url.strip()]
+
+        if quick_companies:
+            # parse comma-separated manual URLs
+            careers_list = [u.strip() for u in manual_careers.split(',') if u.strip()] if manual_careers else []
+            about_list = [u.strip() for u in manual_about.split(',') if u.strip()] if manual_about else []
+            news_list = [u.strip() for u in manual_news.split(',') if u.strip()] if manual_news else []
+            team_list = [u.strip() for u in manual_team.split(',') if u.strip()] if manual_team else []
+
+            for idx, url in enumerate(quick_companies):
+                manual_urls = {}
+                if idx < len(careers_list):
+                    manual_urls['careers'] = careers_list[idx]
+                if idx < len(about_list):
+                    manual_urls['about'] = about_list[idx]
+                if idx < len(news_list):
+                    manual_urls['news'] = news_list[idx]
+                if idx < len(team_list):
+                    manual_urls['team'] = team_list[idx]
+
+                companies_to_process.append({
+                    'url': url,
+                    'manual_urls': manual_urls if manual_urls else None,
+                    'contact_name': contact_name if contact_name else None,
+                    'contact_email': contact_email if contact_email else None,
+                    'target_role': config['target_role']
+                })
+
+        # 2. check CSV Upload
+        if hasattr(st.session_state, 'csv_companies') and st.session_state.csv_companies:
+            for company in st.session_state.csv_companies:
+                companies_to_process.append({
+                    'url': company['url'],
+                    'manual_urls': company.get('manual_urls'),
+                    'contact_name': None,
+                    'contact_email': None,
+                    'target_role': company.get('target_role', config['target_role'])
+                })
+
+        # 3. check Company Groups
+        if st.session_state.company_groups:
+            for group in st.session_state.company_groups:
+                companies_to_process.append({
+                    'url': group['url'],
+                    'manual_urls': group.get('manual_urls'),
+                    'contact_name': None,
+                    'contact_email': None,
+                    'target_role': config['target_role']
+                })
+
+        # validation
+        if not companies_to_process:
+            st.error("❌ Please enter at least one company URL (Quick Entry, CSV, or Groups)")
             return
-        
-        # If no company URLs but manual URLs exist, create placeholder
-        if not companies and manual_urls:
-            # Use the first manual URL's domain as company URL
-            first_manual_url = list(manual_urls.values())[0]
-            parsed = urlparse(first_manual_url)
-            company_url_placeholder = f"{parsed.scheme}://{parsed.netloc}"
-            companies = [company_url_placeholder]
-            st.info(f"ℹ️ Using domain from manual URLs: {company_url_placeholder}")
+
+        # de-duplicate by URL
+        seen_urls = set()
+        unique_companies = []
+        for company in companies_to_process:
+            if company['url'] not in seen_urls:
+                seen_urls.add(company['url'])
+                unique_companies.append(company)
+        companies_to_process = unique_companies
+
+        st.info(f"📋 Processing {len(companies_to_process)} companies...")
         
         st.session_state.workflow_results = []
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        for i, company_url in enumerate(companies):
-            status_text.text(f"Processing {i+1}/{len(companies)}: {company_url}")
-            
+        overall_progress_bar = st.progress(0)
+        overall_status = st.empty()
+
+        # create containers for each company's progress
+        company_progress_containers = {}
+        for idx, company in enumerate(companies_to_process):
+            with st.container():
+                st.markdown(f"**{idx+1}. {company['url']}**")
+                company_progress_containers[company['url']] = {
+                    'progress_bar': st.progress(0),
+                    'status_text': st.empty()
+                }
+
+        st.divider()
+
+        for i, company in enumerate(companies_to_process):
+            company_url = company['url']
+            overall_status.markdown(f"**Processing {i+1}/{len(companies_to_process)}**: {company_url}")
+
+            # get this company's progress container
+            container = company_progress_containers[company_url]
+
+            # define progress callback for this company
+            def progress_callback(step: str, progress: float, status: str):
+                container['progress_bar'].progress(progress)
+                container['status_text'].text(status)
+
+            # update workflow with progress callback
+            st.session_state.workflow.progress_callback = progress_callback
+
             try:
                 result = st.session_state.workflow.run(
                     resume_path=config['resume_path'],
-                    target_role=config['target_role'],
+                    target_role=company.get('target_role', config['target_role']),
                     company_url=company_url,
                     message_type=config['message_type'],
                     tone=config['tone'],
-                    contact_name=contact_name if contact_name else None,
-                    contact_email=contact_email if contact_email else None,
+                    contact_name=company.get('contact_name'),
+                    contact_email=company.get('contact_email'),
                     skip_guardrails=config['skip_guardrails'],
                     max_retries=config['max_retries'],
-                    manual_urls=manual_urls if manual_urls else None,
+                    manual_urls=company.get('manual_urls'),
                     js_rendering=config.get('js_rendering', True),
                     scroll_page=config.get('scroll_page', True),
                     js_wait_time=config.get('js_wait_time', 3000)
                 )
-                
+
                 st.session_state.workflow_results.append(result)
-                
+                container['status_text'].text("✅ Complete!")
+
             except Exception as e:
                 logger.error(f"Failed to process {company_url}: {e}")
-                st.error(f"❌ Failed: {company_url} - {str(e)}")
-            
-            progress_bar.progress((i + 1) / len(companies))
-        
-        status_text.text("✅ All companies processed!")
+                container['status_text'].text(f"❌ Failed: {str(e)}")
+
+            overall_progress_bar.progress((i + 1) / len(companies_to_process))
+
+        overall_status.markdown("**✅ All companies processed!**")
         st.success(f"Generated messages for {len(st.session_state.workflow_results)} companies")
+
+        # clear CSV companies after processing (optional: keep groups)
+        if hasattr(st.session_state, 'csv_companies'):
+            st.session_state.csv_companies = []
+
         st.rerun()
     
     if st.session_state.workflow_results:
@@ -280,7 +475,7 @@ def render_extracted_contacts(scraped_data: Dict, result_index: int = 0):
 
     st.success(f"📇 Found {len(contacts)} potential contacts!")
 
-    # Create a dataframe for display
+    # create a dataframe for display
     contact_data = []
     for c in contacts:
         relevance = c.get('relevance_score', 0)
@@ -296,9 +491,9 @@ def render_extracted_contacts(scraped_data: Dict, result_index: int = 0):
         })
 
     df = pd.DataFrame(contact_data)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width='stretch', hide_index=True)
 
-    # Let user select a contact
+    # let user select a contact
     contact_names = [f"{c.get('name', 'Unknown')} - {c.get('title', 'No title')}" for c in contacts]
     selected_idx = st.selectbox(
         "Select a contact to use:",
@@ -335,7 +530,6 @@ def render_extracted_contacts(scraped_data: Dict, result_index: int = 0):
 
     return None
 
-
 def render_extracted_jobs(scraped_data: Dict, target_role: str = ""):
     """Display extracted job listings"""
     jobs = scraped_data.get('extracted_jobs', [])
@@ -345,7 +539,19 @@ def render_extracted_jobs(scraped_data: Dict, target_role: str = ""):
         st.info("💡 **Tip:** Use the manual URL option to provide the exact careers search URL")
         return
 
-    # Filter for matching jobs if target role provided
+    base_url = (
+        scraped_data.get("company_url")
+        or (scraped_data.get("pages", {}).get("careers", {}) or {}).get("url", "")
+    )
+
+    def make_url(job_url: str) -> str:
+        if not job_url:
+            return ""
+        if job_url.startswith("http"):
+            return job_url
+        return urljoin(base_url + "/", job_url)
+
+    # filter for matching jobs if target role provided
     if target_role:
         matching = [j for j in jobs if j.get('match_score', 0) > 0.3]
         other = [j for j in jobs if j.get('match_score', 0) <= 0.3]
@@ -355,16 +561,28 @@ def render_extracted_jobs(scraped_data: Dict, target_role: str = ""):
             for job in matching[:5]:
                 score = job.get('match_score', 0)
                 match_indicator = "🔥" if score > 0.7 else "⭐"
-                st.markdown(f"{match_indicator} **{job['title']}**")
+                job_url = make_url(job.get('url', ''))
+                if job_url:
+                    st.markdown(f"{match_indicator} **[{job['title']}]({job_url})** 🔗")
+                else:
+                    st.markdown(f"{match_indicator} **{job['title']}**")
 
         if other:
             with st.expander(f"Other {len(other)} jobs found"):
                 for job in other[:10]:
-                    st.markdown(f"• {job['title']}")
+                    job_url = make_url(job.get('url', ''))
+                    if job_url:
+                        st.markdown(f"• [{job['title']}]({job_url}) 🔗")
+                    else:
+                        st.markdown(f"• {job['title']}")
     else:
         st.write(f"**{len(jobs)} job titles found:**")
         for job in jobs[:10]:
-            st.markdown(f"• {job['title']}")
+            job_url = make_url(job.get('url', ''))
+            if job_url:
+                st.markdown(f"• [{job['title']}]({job_url}) 🔗")
+            else:
+                st.markdown(f"• {job['title']}")
 
 
 def render_scraped_data_summary(scraped_data: Dict):
@@ -454,18 +672,50 @@ def render_results():
                 with st.expander("🔍 View Scraped Data (Pages Found)", expanded=False):
                     render_scraped_data_summary(scraped_data)
             
-            if result.get('selected_variant'):
-                variant = result['selected_variant']
-                
-                st.markdown("**Generated Message:**")
+            # show all message variants
+            variants = result.get('message_variants', [])
+            if variants:
+                import re
+
+                st.markdown("**Generated Messages:**")
+
+                # variant selector if multiple variants exist
+                if len(variants) > 1:
+                    variant_labels = [f"Variant {idx+1} ({v['word_count']} words)" for idx, v in enumerate(variants)]
+                    selected_variant_idx = st.selectbox(
+                        "Choose a variant:",
+                        range(len(variants)),
+                        format_func=lambda idx: variant_labels[idx],
+                        key=f"variant_select_{i}"
+                    )
+                else:
+                    selected_variant_idx = 0
+
+                variant = variants[selected_variant_idx]
+
+                show_raw = st.checkbox(
+                    "Show raw message (with citations)",
+                    value=False,
+                    key=f"show_raw_{i}"
+                )
+
+                if show_raw:
+                    display_message = variant['message']
+                else:
+                    clean_message = re.sub(r'\[source:\s*[^\]]+\]', '', variant['message'])
+                    clean_message = re.sub(r'\s+', ' ', clean_message).strip()
+                    display_message = clean_message
+
+                # use variant index and company URL in key to ensure uniqueness across generations
+                company_url = result.get('company_url', '').replace('https://', '').replace('http://', '').replace('/', '_')
                 st.text_area(
                     "Message",
-                    value=variant['message'],
+                    value=display_message,
                     height=200,
-                    key=f"msg_{i}",
+                    key=f"msg_{company_url}_{i}_v{selected_variant_idx}",
                     label_visibility="collapsed"
                 )
-                
+
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.caption(f"📝 {variant['word_count']} words")
@@ -473,7 +723,7 @@ def render_results():
                     st.caption(f"📌 {len(variant['citations'])} citations")
                 with col3:
                     st.caption(f"💡 {len(variant['skills_highlighted'])} skills")
-                
+
                 if variant['citations']:
                     with st.expander("View Citations"):
                         for citation in variant['citations']:
@@ -534,7 +784,7 @@ def render_tracking_tab():
                 })
             
             df = pd.DataFrame(data)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df, width='stretch', hide_index=True)
             
             st.subheader("Update Status")
             col1, col2, col3 = st.columns(3)
@@ -573,7 +823,8 @@ def render_tracking_tab():
                 ):
                     st.write(f"**Company:** {msg.company.name}")
                     st.write(f"**Role:** {msg.target_role}")
-                    st.write(f"**Original Sent:** {msg.sent_at.strftime('%Y-%m-%d')}")
+                    sent_at_str = msg.sent_at.strftime('%Y-%m-%d') if msg.sent_at else "N/A"
+                    st.write(f"**Original Sent:** {sent_at_str}")
                     st.write(f"**Message Preview:**")
                     st.text(msg.message_content[:200] + "...")
                     
