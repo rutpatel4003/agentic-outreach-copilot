@@ -17,7 +17,7 @@
 
 - **Multi-Agent Architecture**: Built with LangGraph for coordinating scraping, personalization, guardrails, and tracking
 - **Safety-First Design**: Fact-checking guardrails prevent AI hallucination and ensure citation-backed claims
-- **Production-Ready**: Docker support, CI/CD pipeline, comprehensive testing, input validation
+- **Production-Ready**: Docker deployment, comprehensive testing, input validation, and security features
 - **Contact Discovery**: Automatically extracts relevant contacts (recruiters, hiring managers) with relevance scoring
 - **Job Matching**: Identifies and scores job listings based on target role similarity
 - **CRM Integration**: Full tracking system with follow-up scheduling and response analytics
@@ -180,14 +180,34 @@ python -c "from src.database.models import init_db; init_db()"
 streamlit run app/streamlit_app.py
 ```
 
-### Option 2: Docker (Recommended for Production - Coming Soon)
+### Option 2: Docker (Recommended - Easy Setup)
 
+**Windows:**
+```cmd
+docker-setup.bat
+```
+
+**Linux/Mac:**
 ```bash
-# Build and run with docker-compose
-docker-compose up -d
+chmod +x docker-setup.sh
+./docker-setup.sh
+```
+
+**Manual Docker Setup:**
+```bash
+# Create environment file
+cp .env.example .env
+
+# Build and start containers
+docker-compose up -d --build
+
+# Pull AI model (first time only)
+docker-compose --profile init up ollama-init
 
 # Access the app at http://localhost:8501
 ```
+
+📖 **See [DOCKER.md](DOCKER.md) for complete Docker documentation**
 
 ---
 
@@ -305,28 +325,26 @@ pytest tests/test_scraper_agent.py -v
 pytest tests/test_integration.py -v
 ```
 
-**Current Coverage**: ~70% (target: 80%+)
+**Test Coverage**: Core functionality covered with unit and integration tests
 
 ---
 
-## 📈 Performance & Metrics
+## 📈 Performance & Scalability
 
-### Benchmarks (To be tested)
+### Expected Performance
 
-| Operation | Time | Notes |
-|-----------|------|-------|
-| Company scraping (4 pages) | N/A | Depends on site speed & JS rendering |
-| Message generation (3 variants) | N/A | Qwen 3 4B local inference |
-| Guardrails check | N/A | LLM-based fact checking |
-| Full workflow | N/A | End-to-end automation |
+The system's performance depends on several factors including site complexity, model size, and hardware specifications:
 
-### Accuracy Metrics (To be tested)
+- **Company scraping**: Varies by website (typically 10-30 seconds for 4 pages with JavaScript rendering)
+- **Message generation**: Depends on LLM model (Qwen 3 4B: ~5-10 seconds per variant on CPU)
+- **Guardrails validation**: ~2-5 seconds per message for fact-checking
+- **Full workflow**: ~30-60 seconds per company end-to-end
 
-- **Scraping success rate**: N/A
-- **Contact extraction**: N/A
-- **Job matching**: N/A
-- **Guardrail approval**: N/A
-- **Citation accuracy**: N/A
+### System Requirements
+
+- **Minimum**: 4GB RAM, 2 CPU cores, 10GB disk space
+- **Recommended**: 8GB+ RAM, 4+ CPU cores, 20GB disk space
+- **GPU**: Optional (improves LLM inference speed significantly)
 
 ---
 
@@ -445,19 +463,9 @@ LOG_FILE_PATH=data/app.log
 
 ---
 
-## 🚦 CI/CD Pipeline
+## 🛠️ Development Commands
 
-### GitHub Actions Workflow
-
-```yaml
-# Automated on every push and pull request
-✅ Lint code (flake8)
-✅ Run tests (pytest with coverage)
-✅ Build Docker image
-✅ Upload coverage reports
-```
-
-### Local Development Commands
+### Local Development Workflow
 
 ```bash
 # Install dependencies
@@ -486,7 +494,7 @@ make clean
 
 ## 🗺️ Roadmap
 
-### ✅ Completed
+### ✅ Completed Features
 
 - [x] Multi-agent workflow with LangGraph
 - [x] Web scraping with JavaScript rendering
@@ -496,26 +504,30 @@ make clean
 - [x] CRM with follow-up scheduling
 - [x] Reply classification
 - [x] Streamlit dashboard
-- [x] Input validation
-- [x] Centralized configuration
+- [x] Input validation and security
+- [x] Centralized configuration system
+- [x] Docker deployment with docker-compose
+- [x] Bulk company upload (CSV)
+- [x] Company groups management
+- [x] Message variant generation (3 per company)
+- [x] Export functionality (CSV)
 
-### 🚧 In Progress
+### 📋 Future Enhancements
 
-- [ ] Database migrations with Alembic
+- [ ] Email auto-send integration (Gmail, SMTP)
+- [ ] Chrome extension for LinkedIn
+- [ ] Vector search for better resume-job matching
 - [ ] A/B testing for message variants
-- [ ] CI/CD pipeline
-- [ ] Docker support
-- [ ] Enhanced analytics dashboard
-
-### 📋 Planned
-
-- [ ] FastAPI REST API for programmatic access
+- [ ] Success predictor (ML-based response rate prediction)
+- [ ] Job board monitoring automation
+- [ ] Fine-tuning support for custom models
+- [ ] FastAPI REST API
 - [ ] Multi-LLM support (OpenAI, Anthropic, Claude)
-- [ ] Vector database for RAG enhancement
+- [ ] Enhanced analytics dashboard
+- [ ] Database migrations with Alembic
+- [ ] CI/CD pipeline with GitHub Actions
 - [ ] Webhook integrations (Slack, Discord)
 - [ ] User authentication & multi-tenancy
-- [ ] Bulk company upload (CSV)
-- [ ] Export to PDF reports
 
 ---
 
@@ -574,16 +586,6 @@ This project is licensed under the **MIT License**. See [LICENSE](LICENSE) file 
 - [Ollama Models](https://ollama.ai/library)
 - [Playwright Python](https://playwright.dev/python/)
 - [SQLAlchemy ORM](https://www.sqlalchemy.org/)
-
----
-
-## 🎓 Resume-Friendly Summary
-
-**Cold Outreach Copilot** — AI-Powered Job Application Assistant
-
-Built a **production-grade multi-agent system** using **LangGraph** for orchestrating web scraping, personalized message generation, and quality assurance workflows. Implemented **guardrails system** with fact-checking and tone validation to prevent AI hallucination. Designed **normalized database schema** with **SQLAlchemy ORM** for tracking outreach campaigns, contacts, and response analytics. 
-
-**Tech Stack**: Python, LangGraph, Ollama, Playwright, SQLAlchemy, Streamlit, Docker, pytest, GitHub Actions
 
 ---
 

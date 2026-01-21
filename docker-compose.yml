@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cold-outreach-app
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - app_cache:/app/.cache
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=qwen3:4b-instruct
+      - DATABASE_PATH=/app/data/outreach.db
+      - SCRAPER_CACHE_DIR=/app/data/scraped_content
+      - LOG_LEVEL=INFO
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cold-outreach-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Uncomment to auto-pull model on startup (takes time on first run)
+    # command: sh -c "ollama pull qwen3:4b-instruct && ollama serve"
+
+  # Optional: Model initialization service (runs once to pull model)
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: cold-outreach-ollama-init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        echo "Pulling qwen3:4b-instruct model..."
+        ollama pull qwen3:4b-instruct || echo "Model already exists or pull failed"
+        echo "Model ready!"
+    restart: "no"
+    profiles:
+      - init
+
+volumes:
+  ollama_data:
+    driver: local
+  app_cache:
+    driver: local
