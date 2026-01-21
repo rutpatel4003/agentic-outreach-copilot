@@ -473,7 +473,7 @@ class ScraperAgent:
             careers_html = careers_page.get('html', '')
             careers_text = careers_page.get('text', '')
 
-            logger.debug(f"Careers page: {len(careers_text)} chars text, {len(careers_html)} chars HTML")
+            logger.info(f"📄 Careers page captured: {len(careers_text)} chars text, {len(careers_html)} chars HTML")
 
             jobs = self.extract_job_listings(
                 text=careers_text,
@@ -484,9 +484,11 @@ class ScraperAgent:
         result['extracted_jobs'] = jobs
 
         if jobs:
-            logger.info(f"Found {len(jobs)} job titles mentioned:")
+            jobs_with_urls = [j for j in jobs if j.get('url')]
+            logger.info(f"Found {len(jobs)} job titles mentioned ({len(jobs_with_urls)} with URLs):")
             for job in jobs[:5]:
-                logger.info(f"  • {job['title']}")
+                url_indicator = " 🔗" if job.get('url') else ""
+                logger.info(f"  • {job['title']}{url_indicator}")
             if len(jobs) > 5:
                 logger.info(f"... and {len(jobs) - 5} more")
         else:
@@ -539,6 +541,8 @@ class ScraperAgent:
         Extract job listings from careers page text/HTML.
         Returns list of jobs with: title, url (if found), location, match_score
         """
+        html_length = len(html) if html else 0
+        logger.info(f"🔍 extract_job_listings called: text_len={len(text)}, html_len={html_length}, target_role='{target_role}'")
         jobs = []
         seen_titles = set()
 
@@ -583,19 +587,65 @@ class ScraperAgent:
 
         # extract job URLs and additional jobs from HTML if available
         if html:
-            # common patterns for job listing links
+            logger.info(f"   Searching for job URLs in HTML ({len(html)} chars)")
+
+            # common patterns for job listing links - including major ATS systems
             job_url_patterns = [
+                # Standard job paths
                 r'href=["\']([^"\']*(?:/jobs?/|/careers?/|/positions?/|/openings?/)[^"\']*)["\']',
+                # ATS query parameters
                 r'href=["\']([^"\']*(?:job_id|jobId|position_id|req_id|requisition)[^"\']*)["\']',
+                # Greenhouse ATS
+                r'href=["\'](https?://boards\.greenhouse\.io/[^"\']+)["\']',
+                r'href=["\'](https?://[^"\']*greenhouse[^"\']*jobs?[^"\']*)["\']',
+                # Lever ATS
+                r'href=["\'](https?://jobs\.lever\.co/[^"\']+)["\']',
+                # Workday
+                r'href=["\'](https?://[^"\']*workday[^"\']*job[^"\']*)["\']',
+                r'href=["\'](https?://[^"\']*myworkdayjobs[^"\']*)["\']',
+                # Ashby
+                r'href=["\'](https?://jobs\.ashbyhq\.com/[^"\']+)["\']',
+                # BambooHR
+                r'href=["\'](https?://[^"\']*bamboohr[^"\']*jobs?[^"\']*)["\']',
+                # Generic apply links
+                r'href=["\']([^"\']*(?:/apply|/application)[^"\']*)["\']',
             ]
 
             found_urls = set()
-            for pattern in job_url_patterns:
+            for pattern_idx, pattern in enumerate(job_url_patterns):
                 urls = re.findall(pattern, html, re.IGNORECASE)
+                # Filter out static assets (js, css, images)
+                urls = [u for u in urls if not re.search(r'\.(js|css|png|jpg|svg|woff|ico)(\?|$)', u, re.I)]
+                if urls:
+                    logger.info(f"   Job URL pattern {pattern_idx + 1}: found {len(urls)} URLs")
+                    for sample_url in urls[:2]:
+                        logger.info(f"      Example: {sample_url[:80]}...")
                 for url in urls[:30]:  # limit
                     if url in found_urls:
                         continue
                     found_urls.add(url)
+
+            # Also look for job URLs in JavaScript/JSON data (common in SPAs like Nuxt/React)
+            json_url_patterns = [
+                # Greenhouse job IDs in JSON
+                r'"url"\s*:\s*"(https?://[^"]*(?:greenhouse|lever|workday|ashby)[^"]*)"',
+                r'"apply_url"\s*:\s*"([^"]+)"',
+                r'"job_url"\s*:\s*"([^"]+)"',
+                r'"href"\s*:\s*"(/careers/[^"]+)"',
+                r'"link"\s*:\s*"(/jobs?/[^"]+)"',
+                # Greenhouse/Lever embedded URLs
+                r'greenhouse\.io/[^/]+/jobs/(\d+)',
+                r'lever\.co/[^/]+/([a-f0-9-]+)',
+            ]
+
+            for pattern in json_url_patterns:
+                matches = re.findall(pattern, html, re.IGNORECASE)
+                if matches:
+                    logger.info(f"   Found {len(matches)} URLs in JavaScript/JSON data")
+                    for match in matches[:10]:
+                        if match not in found_urls:
+                            found_urls.add(match)
+                            logger.info(f"      JS/JSON URL: {match[:60]}...")
 
                     # try to extract job title from URL
                     url_parts = url.lower().replace('-', ' ').replace('_', ' ').replace('/', ' ')
@@ -627,6 +677,14 @@ class ScraperAgent:
                                         seen_titles.add(path_parts.lower())
                                 break
 
+            # Log URL extraction results
+            jobs_with_urls = [j for j in jobs if j.get('url')]
+            jobs_without_urls = [j for j in jobs if not j.get('url')]
+            logger.info(f"📊 Job URL extraction: {len(found_urls)} URLs found, {len(jobs_with_urls)} jobs matched, {len(jobs_without_urls)} jobs without URLs")
+            if jobs_with_urls:
+                for job in jobs_with_urls[:3]:
+                    logger.info(f"   ✅ '{job['title']}' → {job['url'][:60]}...")
+
             # also look for job titles in common HTML structures
             job_title_html_patterns = [
                 r'<h[1-4][^>]*class=["\'][^"\']*(?:job|position|role|title)[^"\']*["\'][^>]*>([^<]+)</h[1-4]>',
@@ -653,6 +711,15 @@ class ScraperAgent:
 
         # sort by match score
         jobs.sort(key=lambda j: j['match_score'], reverse=True)
+
+        # Final summary
+        jobs_with_urls = [j for j in jobs if j.get('url')]
+        logger.info(f"📊 Job extraction complete: {len(jobs)} jobs found, {len(jobs_with_urls)} have URLs")
+        if jobs_with_urls:
+            for job in jobs_with_urls[:3]:
+                logger.info(f"   ✅ '{job['title']}' → {job['url'][:60]}...")
+        elif html:
+            logger.warning(f"   ⚠️ No URLs matched to jobs. HTML might use JavaScript or different URL structure.")
 
         return jobs[:20]  # return top 20
 
@@ -722,7 +789,25 @@ class ScraperAgent:
 
                     # validate name looks like a name (2-4 words, title case)
                     name_words = name.split()
-                    if 2 <= len(name_words) <= 4 and name not in seen_names:
+
+                    # Filter out job titles disguised as names
+                    # Common patterns that are job titles, not names:
+                    job_title_indicators = [
+                        'engineer', 'developer', 'manager', 'director', 'lead', 'senior', 'junior',
+                        'staff', 'principal', 'operations', 'safety', 'data', 'platform', 'autonomy',
+                        'embedded', 'software', 'hardware', 'recruiting', 'time', 'systems', 'technical'
+                    ]
+
+                    name_lower = name.lower()
+                    is_likely_job_title = any(indicator in name_lower for indicator in job_title_indicators)
+
+                    # Also check if the "name" contains numbers or special chars (likely not a real name)
+                    has_weird_chars = any(char.isdigit() or char in ['/', '#', '@'] for char in name)
+
+                    if (2 <= len(name_words) <= 4 and
+                        name not in seen_names and
+                        not is_likely_job_title and
+                        not has_weird_chars):
                         relevance = self._calculate_title_relevance(title)
                         contacts.append(ExtractedContact(
                             name=name,
