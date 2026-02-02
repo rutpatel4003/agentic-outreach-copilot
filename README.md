@@ -1,4 +1,4 @@
-# 🤖 Cold Outreach Copilot
+# 🤖 ReachForge - Cold Outreach Copilot
 
 > **AI-Powered Job Application Assistant with Safety Guardrails**
 > Automate personalized outreach at scale while maintaining message quality and fact-checking.
@@ -11,7 +11,7 @@
 
 ## 🎯 Overview
 
-**Cold Outreach Copilot** is a production-grade AI system that automates the job application outreach process while maintaining high-quality, personalized communication. It combines **multi-agent orchestration**, **web scraping**, **LLM-powered generation**, and **quality guardrails** to generate fact-checked, personalized messages for job opportunities.
+**ReachForge** is a production-grade AI system that automates the job application outreach process while maintaining high-quality, personalized communication. It combines **multi-agent orchestration**, **web scraping**, **LLM-powered generation**, and **quality guardrails** to generate fact-checked, personalized messages for job opportunities.
 
 ### 🔥 Key Highlights
 
